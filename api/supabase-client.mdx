@@ -1,0 +1,191 @@
+---
+title: "Supabase Client"
+description: "Supabase client initialization for mobile and web platforms"
+---
+
+## Overview
+
+The Supabase client is configured differently for mobile (React Native) and web (Next.js) platforms to handle authentication and session management appropriately for each environment.
+
+## Mobile Client (React Native)
+
+The mobile client uses Expo SecureStore for secure session persistence.
+
+### Configuration
+
+<ParamField path="supabaseUrl" type="string" required>
+  Supabase project URL from `EXPO_PUBLIC_SUPABASE_URL` environment variable
+</ParamField>
+
+<ParamField path="supabaseAnonKey" type="string" required>
+  Supabase anonymous key from `EXPO_PUBLIC_SUPABASE_ANON_KEY` environment variable
+</ParamField>
+
+<ParamField path="auth.storage" type="SecureStoreAdapter">
+  Custom storage adapter using Expo SecureStore for secure token persistence
+</ParamField>
+
+<ParamField path="auth.persistSession" type="boolean" default={true}>
+  Enables session persistence across app restarts
+</ParamField>
+
+<ParamField path="auth.autoRefreshToken" type="boolean" default={true}>
+  Automatically refreshes authentication tokens before expiration
+</ParamField>
+
+<ParamField path="auth.detectSessionInUrl" type="boolean" default={false}>
+  Disabled for mobile as sessions are not passed via URLs
+</ParamField>
+
+### Code Example
+
+```typescript mobile/src/services/supabase.ts
+import { createClient } from '@supabase/supabase-js'
+import * as SecureStore from 'expo-secure-store'
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string
+
+const ExpoSecureStoreAdapter = {
+    getItem: SecureStore.getItemAsync,
+    setItem: SecureStore.setItemAsync,
+    removeItem: SecureStore.deleteItemAsync
+}
+
+export const supabase = createClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+        auth: {
+            storage: ExpoSecureStoreAdapter,
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false
+        }
+    }
+)
+```
+
+### Usage
+
+```typescript
+import { supabase } from '@/src/services/supabase'
+
+// Get current session
+const { data } = await supabase.auth.getSession()
+
+// Query database
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('role')
+  .eq('id', userId)
+  .single()
+```
+
+## Web Client (Next.js)
+
+### Browser Client
+
+For client-side operations in Next.js, use the browser client.
+
+<ParamField path="supabaseUrl" type="string" required>
+  Supabase project URL from `NEXT_PUBLIC_SUPABASE_URL` environment variable
+</ParamField>
+
+<ParamField path="supabaseAnonKey" type="string" required>
+  Supabase anonymous key from `NEXT_PUBLIC_SUPABASE_ANON_KEY` environment variable
+</ParamField>
+
+```typescript web/lib/supabase.ts
+import { createBrowserClient } from "@supabase/ssr";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase environment variables");
+}
+
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+```
+
+### Server Client
+
+For server-side operations, use the server client with cookie-based authentication.
+
+<ParamField path="cookies" type="CookieOptions" required>
+  Cookie configuration for server-side session management
+</ParamField>
+
+<ParamField path="cookies.get" type="(name: string) => string | undefined" required>
+  Function to retrieve cookie values from Next.js cookie store
+</ParamField>
+
+<ParamField path="cookies.set" type="() => void" required>
+  Placeholder function for setting cookies (handled by Next.js)
+</ParamField>
+
+<ParamField path="cookies.remove" type="() => void" required>
+  Placeholder function for removing cookies (handled by Next.js)
+</ParamField>
+
+```typescript web/lib/supabase-server.ts
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+export async function createClient() {
+    const cookieStore = await cookies();
+
+    return createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set() { },
+                remove() { },
+            },
+        }
+    );
+}
+```
+
+### Usage
+
+```typescript
+// Client-side
+import { supabase } from '@/lib/supabase'
+
+const { data } = await supabase.auth.getUser()
+
+// Server-side
+import { createClient } from '@/lib/supabase-server'
+
+const supabase = await createClient()
+const { data } = await supabase.auth.getUser()
+```
+
+## Environment Variables
+
+### Mobile (React Native)
+
+```bash .env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### Web (Next.js)
+
+```bash .env.local
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+## Security
+
+- Mobile: Sessions are stored securely in Expo SecureStore (encrypted storage)
+- Web Browser: Sessions are stored in cookies with automatic CSRF protection
+- Web Server: Sessions are read from cookies server-side for authentication
+- Both platforms use the anonymous key for client-side operations with Row Level Security (RLS)

@@ -1,0 +1,389 @@
+---
+title: "Analytics Dashboard"
+description: "Comprehensive analytics and reporting features for hotel incident management"
+---
+
+## Overview
+
+The Incidents App analytics dashboard provides real-time insights into hotel operations, incident trends, and team performance. Built with interactive charts and data tables, it helps administrators make data-driven decisions.
+
+## Dashboard Metrics
+
+The main dashboard displays four key performance indicators:
+
+<CardGroup cols={2}>
+  <Card title="Total Incidents" icon="clipboard-list">
+    Lifetime count of all incidents reported across the property
+  </Card>
+  <Card title="Pending" icon="clock">
+    Incidents awaiting staff acceptance (status: `pendiente`)
+  </Card>
+  <Card title="In Progress" icon="spinner">
+    Incidents currently being worked on (status: `en_progreso`)
+  </Card>
+  <Card title="Resolved" icon="check-circle">
+    Completed incidents (status: `resuelta`)
+  </Card>
+</CardGroup>
+
+### Implementation
+
+The dashboard fetches metrics using Supabase server-side queries:
+
+```typescript app/(dashboard)/dashboard/page.tsx
+import { createClient } from "@/lib/supabase-server";
+
+export default async function DashboardPage() {
+    const supabase = await createClient();
+
+    // Fetch incident counts
+    const { count: totalIncidents } = await supabase
+        .from("incidents")
+        .select("*", { count: "exact", head: true });
+
+    const { count: pendingCount } = await supabase
+        .from("incidents")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pendiente");
+
+    const { count: inProgressCount } = await supabase
+        .from("incidents")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "en_progreso");
+
+    const { count: resolvedCount } = await supabase
+        .from("incidents")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "resuelta");
+
+    const cardData = {
+        total: totalIncidents || 0,
+        pending: pendingCount || 0,
+        inProgress: inProgressCount || 0,
+        resolved: resolvedCount || 0,
+    };
+
+    return (
+        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+            <SectionCards data={cardData} />
+            {/* More components */}
+        </div>
+    );
+}
+```
+
+## Trend Charts
+
+The dashboard includes an interactive area chart showing incident trends over the last 90 days.
+
+### Chart Features
+
+- **Dual Series**: Created vs. Resolved incidents
+- **Interactive Tooltips**: Hover to see daily details
+- **Responsive Design**: Adapts to screen size
+- **Date Range**: Last 90 days of data
+- **Color Coding**: Visual distinction between series
+
+### Implementation
+
+```typescript page.tsx
+// Fetch incident trend data (grouped by day, last 90 days)
+const ninetyDaysAgo = new Date();
+ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+const { data: trendRaw } = await supabase
+    .from("incidents")
+    .select("created_at, status")
+    .gte("created_at", ninetyDaysAgo.toISOString())
+    .order("created_at", { ascending: true });
+
+// Group by date
+const trendMap = new Map<string, { created: number; resolved: number }>();
+(trendRaw || []).forEach((inc: any) => {
+    const date = inc.created_at?.split("T")[0];
+    if (!date) return;
+    if (!trendMap.has(date)) {
+        trendMap.set(date, { created: 0, resolved: 0 });
+    }
+    const entry = trendMap.get(date)!;
+    entry.created++;
+    if (inc.status === "resuelta") {
+        entry.resolved++;
+    }
+});
+
+const chartData = Array.from(trendMap.entries()).map(([date, val]) => ({
+    date,
+    created: val.created,
+    resolved: val.resolved,
+}));
+```
+
+The chart component (`ChartAreaInteractive`) uses Recharts library:
+
+```typescript components/chart-area-interactive.tsx
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+
+export function ChartAreaInteractive({ data }) {
+  return (
+    <ChartContainer config={chartConfig}>
+      <AreaChart data={data}>
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tickFormatter={(value) => {
+            const date = new Date(value);
+            return date.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            });
+          }}
+        />
+        <YAxis tickLine={false} axisLine={false} />
+        <ChartTooltip
+          cursor={false}
+          content={<ChartTooltipContent indicator="dot" />}
+        />
+        <Area
+          dataKey="created"
+          type="monotone"
+          fill="hsl(var(--chart-1))"
+          fillOpacity={0.4}
+          stroke="hsl(var(--chart-1))"
+        />
+        <Area
+          dataKey="resolved"
+          type="monotone"
+          fill="hsl(var(--chart-2))"
+          fillOpacity={0.4}
+          stroke="hsl(var(--chart-2))"
+        />
+      </AreaChart>
+    </ChartContainer>
+  );
+}
+```
+
+## Data Tables
+
+The dashboard includes a comprehensive data table powered by TanStack Table showing all incidents.
+
+### Table Features
+
+<CardGroup cols={2}>
+  <Card title="Sorting" icon="arrow-up-arrow-down">
+    Click column headers to sort data
+  </Card>
+  <Card title="Filtering" icon="filter">
+    Filter by status, priority, area, or room
+  </Card>
+  <Card title="Pagination" icon="book-open">
+    Navigate through large datasets
+  </Card>
+  <Card title="Column Visibility" icon="eye">
+    Show/hide columns as needed
+  </Card>
+</CardGroup>
+
+### Data Structure
+
+The table displays these columns:
+
+| Column | Description | Source |
+|--------|-------------|--------|
+| **ID** | Sequential row number | Generated |
+| **Title** | Incident title | `incidents.title` |
+| **Status** | Current status with badge | `incidents.status` |
+| **Priority** | Priority level with color | `incidents.priority` |
+| **Area** | Department/category | `areas.name` (join) |
+| **Room** | Room code | `rooms.room_code` (join) |
+| **Assigned To** | Staff member name | `profiles.full_name` (join) |
+| **Created** | Timestamp | `incidents.created_at` |
+
+### Implementation
+
+```typescript page.tsx
+const { data: incidents } = await supabase
+    .from("incidents")
+    .select(`
+        id,
+        title,
+        description,
+        status,
+        priority,
+        created_at,
+        updated_at,
+        area:areas(name),
+        room:rooms(room_code, floor),
+        assignee:profiles!incidents_assigned_to_fkey(full_name, email)
+    `)
+    .order("created_at", { ascending: false });
+
+// Transform incidents data for the table
+const tableData = (incidents || []).map((incident: any, index: number) => ({
+    id: index + 1,
+    uuid: incident.id,
+    title: incident.title || "Sin título",
+    status: incident.status || "pendiente",
+    priority: incident.priority || "media",
+    area: incident.area?.name || "Sin área",
+    room: incident.room?.room_code || "Sin habitación",
+    assigned_to: incident.assignee?.full_name || "Sin asignar",
+    created_at: incident.created_at || "",
+}));
+
+return <DataTable data={tableData} />;
+```
+
+## Advanced Analytics
+
+The `app/(dashboard)/dashboard/analytics` route provides deeper insights:
+
+### By Department
+
+- Incident volume per area
+- Average resolution time by department
+- Most common issue types
+- Staff workload distribution
+
+### By Time Period
+
+- Daily, weekly, monthly trends
+- Peak incident hours
+- Seasonal patterns
+- Year-over-year comparisons
+
+### By Priority
+
+- Distribution of priority levels
+- Response time by priority
+- Escalation rate
+- SLA compliance
+
+### By Room/Location
+
+- Incidents by floor
+- Problem rooms identification
+- Geographic heat maps
+- Maintenance needs forecasting
+
+## Performance Metrics
+
+Key performance indicators for operational efficiency:
+
+### Response Time
+
+```sql
+-- Average time from creation to first response
+SELECT 
+  AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) / 60 AS avg_response_minutes
+FROM incidents
+WHERE status != 'pendiente';
+```
+
+### Resolution Time
+
+```sql
+-- Average time from creation to resolution
+SELECT 
+  AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) / 3600 AS avg_resolution_hours
+FROM incidents
+WHERE status = 'resuelta';
+```
+
+### Completion Rate
+
+```sql
+-- Percentage of incidents resolved
+SELECT 
+  COUNT(CASE WHEN status = 'resuelta' THEN 1 END) * 100.0 / COUNT(*) AS completion_rate
+FROM incidents;
+```
+
+## Export and Reporting
+
+### CSV Export
+
+Export incident data for external analysis:
+
+```typescript
+function exportToCSV(data: any[]) {
+  const headers = Object.keys(data[0]);
+  const csv = [
+    headers.join(','),
+    ...data.map(row => 
+      headers.map(header => 
+        JSON.stringify(row[header] ?? '')
+      ).join(',')
+    )
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `incidents-${new Date().toISOString()}.csv`;
+  link.click();
+}
+```
+
+### PDF Reports
+
+Generate formatted PDF reports with charts and tables using libraries like `react-pdf` or server-side rendering.
+
+## Real-Time Updates
+
+<Info>
+  Future enhancement: Subscribe to Supabase Realtime for live dashboard updates without page refresh.
+</Info>
+
+```typescript
+// Example real-time subscription
+const supabase = createClient();
+
+supabase
+  .channel('incidents')
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'incidents' },
+    (payload) => {
+      console.log('Change received!', payload);
+      // Update dashboard metrics
+    }
+  )
+  .subscribe();
+```
+
+## Customization
+
+Administrators can customize analytics:
+
+- **Date Ranges**: Select custom time periods
+- **Filters**: Focus on specific areas, priorities, or statuses
+- **Saved Views**: Create and save custom dashboard configurations
+- **Scheduled Reports**: Automate weekly/monthly report generation
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Incident Management" icon="list-check" href="/web/incident-management">
+    Learn about incident management features
+  </Card>
+  <Card title="User Management" icon="users" href="/web/user-management">
+    Manage employee accounts and permissions
+  </Card>
+  <Card title="Database Schema" icon="database" href="/api/database-overview">
+    Explore the underlying data structure
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/web">
+    Deploy your analytics dashboard
+  </Card>
+</CardGroup>

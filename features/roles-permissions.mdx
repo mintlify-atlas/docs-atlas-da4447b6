@@ -1,0 +1,448 @@
+---
+title: 'Role-Based Access Control'
+description: 'Learn how roles and permissions manage access to features and data in the Incidents App'
+icon: 'shield'
+---
+
+The Incidents App implements role-based access control (RBAC) to ensure users only access features and data appropriate to their role.
+
+## Overview
+
+The app supports two primary user roles with distinct capabilities and access levels:
+
+<CardGroup cols={2}>
+  <Card title="Guest" icon="user" color="#0099ff">
+    Hotel guests who can report and track their own incidents
+  </Card>
+  <Card title="Employee (Empleado)" icon="briefcase" color="#10B981">
+    Staff members who manage and resolve incidents in their assigned area
+  </Card>
+</CardGroup>
+
+## Role Definitions
+
+### Guest Role
+
+**Authentication**: QR code-based session authentication
+
+**Capabilities**:
+- Report new incidents
+- View their own incidents
+- See incident status updates
+- Track resolution progress
+
+**Access Scope**: Limited to incidents in their assigned room
+
+```tsx Guest Session
+const raw = await SecureStore.getItemAsync("guest_session")
+const guestSession = JSON.parse(raw)
+// Contains: room_id, access_code, expires_at
+```
+
+### Employee Role
+
+**Authentication**: Email/password authentication via Supabase Auth
+
+**Capabilities**:
+- View incidents in their area
+- Accept tasks from general inbox
+- Update incident status
+- Resolve incidents with evidence
+- Reject and reassign tasks
+
+**Access Scope**: Limited to incidents in their assigned area
+
+```tsx Employee Profile
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('role, area')
+  .eq('id', user.id)
+  .single()
+// Contains: role, area, permissions
+```
+
+## Authentication Flows
+
+### Guest Authentication
+
+<Steps>
+  <Step title="QR Code Scan">
+    Guest scans QR code containing access code
+  </Step>
+  
+  <Step title="Session Verification">
+    Validate access code and check expiration
+  </Step>
+  
+  <Step title="Session Storage">
+    Store session in SecureStore with room_id
+  </Step>
+  
+  <Step title="Access Granted">
+    Navigate to guest home screen
+  </Step>
+</Steps>
+
+```tsx scan.tsx
+const { data: session, error } = await supabase
+  .from('guest_sessions')
+  .select('*')
+  .eq('access_code', accessCode)
+  .eq('active', true)
+  .single()
+
+if (!error && session) {
+  await SecureStore.setItemAsync('guest_session', JSON.stringify(session))
+  router.replace('/(guest)/home')
+}
+```
+
+### Employee Authentication
+
+Employee authentication uses standard Supabase Auth with role verification:
+
+```tsx login.tsx
+const { data, error } = await supabase.auth.signInWithPassword({
+  email,
+  password,
+})
+
+if (!error && data.user) {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, area')
+    .eq('id', data.user.id)
+    .single()
+
+  if (profile?.role === 'empleado') {
+    router.replace('/(empleado)')
+  }
+}
+```
+
+## Route Protection
+
+### Employee Layout Guard
+
+The employee layout verifies authentication and role on mount:
+
+```tsx _layout.tsx
+export default function EmpleadoLayout() {
+  useEffect(() => {
+    const checkEmpleado = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (!data.session) {
+        router.replace('/(auth)/login')
+        return
+      }
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.session.user.id)
+        .single()
+      
+      if (profile?.role !== 'empleado') {
+        router.replace('/(auth)/login')
+        return
+      }
+    }
+    checkEmpleado()
+  }, [])
+  
+  return <Stack screenOptions={{ headerShown: false }} />
+}
+```
+
+<Note>
+The layout guard runs on every screen in the `(empleado)` group, ensuring unauthorized access is prevented.
+</Note>
+
+## Data Access Control
+
+### Guest Data Isolation
+
+Guests can only access incidents for their room:
+
+```tsx MyIncidentsView.tsx
+const raw = await SecureStore.getItemAsync("guest_session")
+const guestSession = JSON.parse(raw)
+
+const { data, error } = await supabase
+  .from("incidents")
+  .select("id, title, description, priority, status, created_at, areas(name)")
+  .eq("room_id", guestSession.room_id) // Room isolation
+  .order("created_at", { ascending: false })
+```
+
+### Employee Area Isolation
+
+Employees can only view incidents in their assigned area:
+
+```tsx EmpleadoBuzonIncidents.tsx
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("area")
+  .eq("id", user.id)
+  .single()
+
+const { data: areaData } = await supabase
+  .from("areas")
+  .select("id")
+  .eq("name", profile.area)
+  .single()
+
+const { data, error } = await supabase
+  .from("incidents")
+  .select("id, title, description, priority, status, created_at, areas(name), rooms(room_code)")
+  .eq("area_id", areaData.id) // Area isolation
+  .eq("status", "pendiente")
+  .order("created_at", { ascending: false })
+```
+
+## Task Assignment Permissions
+
+### Accepting Tasks
+
+Only employees can accept tasks from the general inbox:
+
+```tsx incidents/[id].tsx
+const handleAcceptTask = async () => {
+  // Verify user is authenticated employee
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("No hay usuario autenticado")
+
+  // Check task is still available
+  const { data: currentIncident } = await supabase
+    .from("incidents")
+    .select("status")
+    .eq("id", id)
+    .single()
+
+  if (currentIncident.status !== "pendiente") {
+    Alert.alert("Tarea no disponible", "Esta tarea ya fue aceptada por otro empleado del área.")
+    return
+  }
+
+  // Accept the task
+  const { error } = await supabase
+    .from("incidents")
+    .update({
+      status: "recibida",
+      assigned_to: user.id, // Link to employee
+    })
+    .eq("id", id)
+}
+```
+
+### Task Ownership
+
+Only the assigned employee can update or resolve incidents:
+
+```tsx
+const isAssignedToMe = incident.assigned_to === currentUserId
+const isPending = incident.status === "pendiente"
+
+// Show resolve button only for assigned employee
+{isAssignedToMe && incident.status !== "resuelta" && (
+  <TouchableOpacity
+    style={styles.resolveButton}
+    onPress={handleResolveTask}
+  >
+    <AppText>Resolver Incidencia</AppText>
+  </TouchableOpacity>
+)}
+
+// Show accept button only for unassigned tasks
+{isPending && !isAssignedToMe && (
+  <TouchableOpacity
+    style={styles.actionButton}
+    onPress={handleAcceptTask}
+  >
+    <AppText>Aceptar la tarea</AppText>
+  </TouchableOpacity>
+)}
+```
+
+## Database-Level Security
+
+### Row Level Security (RLS)
+
+Supabase RLS policies enforce access control at the database level:
+
+```sql
+-- Guests can only read their own room's incidents
+CREATE POLICY "Guests can view own room incidents"
+ON incidents
+FOR SELECT
+USING (
+  room_id IN (
+    SELECT room_id FROM guest_sessions 
+    WHERE access_code = current_setting('request.jwt.claims')::json->>'access_code'
+    AND active = true
+  )
+);
+
+-- Employees can view incidents in their area
+CREATE POLICY "Employees can view area incidents"
+ON incidents
+FOR SELECT
+USING (
+  area_id IN (
+    SELECT a.id FROM areas a
+    JOIN profiles p ON p.area = a.name
+    WHERE p.id = auth.uid()
+  )
+);
+
+-- Only assigned employees can update incidents
+CREATE POLICY "Assigned employee can update incident"
+ON incidents
+FOR UPDATE
+USING (assigned_to = auth.uid());
+```
+
+<Info>
+RLS policies provide defense-in-depth security, ensuring access control even if client-side checks fail.
+</Info>
+
+## Permission Checks
+
+### Client-Side Checks
+
+Client-side permission checks provide immediate feedback:
+
+```tsx
+const checkPermission = (action: 'view' | 'update' | 'resolve') => {
+  if (action === 'view') {
+    return true // All authenticated users can view
+  }
+  
+  if (action === 'update' || action === 'resolve') {
+    return isAssignedToMe // Only assigned employee
+  }
+  
+  return false
+}
+```
+
+### Server-Side Validation
+
+All mutations are validated on the server:
+
+```typescript
+// Server-side validation (Supabase RLS)
+if (incident.assigned_to !== auth.uid()) {
+  throw new Error('Unauthorized: Not assigned to this incident')
+}
+
+if (incident.area_id !== employeeArea.id) {
+  throw new Error('Unauthorized: Incident not in your area')
+}
+```
+
+## Areas and Departments
+
+Employees are assigned to specific areas/departments:
+
+```sql
+CREATE TABLE areas (
+  id UUID PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users,
+  role TEXT CHECK (role IN ('guest', 'empleado', 'admin')),
+  area TEXT REFERENCES areas(name),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Common Areas
+
+<CardGroup cols={3}>
+  <Card title="Housekeeping" icon="broom">
+    Room cleaning and maintenance
+  </Card>
+  <Card title="Maintenance" icon="wrench">
+    Technical repairs and fixes
+  </Card>
+  <Card title="Concierge" icon="bell-concierge">
+    Guest services and requests
+  </Card>
+  <Card title="Front Desk" icon="desk">
+    Check-in/out and general inquiries
+  </Card>
+  <Card title="Kitchen" icon="utensils">
+    Food and beverage issues
+  </Card>
+  <Card title="IT" icon="computer">
+    Technology and connectivity
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+### 1. Always Verify Authentication
+
+```tsx
+const { data: { user } } = await supabase.auth.getUser()
+if (!user) {
+  router.replace('/(auth)/login')
+  return
+}
+```
+
+### 2. Check Role Before Actions
+
+```tsx
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('role')
+  .eq('id', user.id)
+  .single()
+
+if (profile?.role !== 'empleado') {
+  throw new Error('Unauthorized')
+}
+```
+
+### 3. Implement Client and Server Checks
+
+Use client-side checks for UX and server-side checks for security.
+
+### 4. Use TypeScript for Type Safety
+
+```typescript
+type Role = 'guest' | 'empleado' | 'admin'
+
+interface Profile {
+  id: string
+  role: Role
+  area: string | null
+}
+```
+
+### 5. Log Security Events
+
+Log unauthorized access attempts for security monitoring.
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn about authentication implementation
+  </Card>
+  <Card title="Database Schema" icon="database" href="/api/database-overview">
+    Explore the database structure
+  </Card>
+  <Card title="Incident Tracking" icon="clipboard-list" href="/features/incident-tracking">
+    See how roles affect incident access
+  </Card>
+  <Card title="Security" icon="lock" href="/features/roles-permissions">
+    Understand security measures
+  </Card>
+</CardGroup>

@@ -1,0 +1,131 @@
+---
+title: "Introduction"
+description: "Learn about Incidents App and how it transforms hotel incident management"
+---
+
+## What is Incidents App?
+
+Incidents App is a comprehensive hotel incident management system designed to streamline communication between guests, staff, and administrators. Built with modern technologies including React Native, Next.js, and Supabase, it provides a seamless experience across mobile and web platforms.
+
+## The Problem
+
+Traditional hotel incident reporting often involves:
+- Phone calls to the front desk
+- Paper-based work orders
+- Delayed communication between departments
+- Lack of visibility into incident status
+- Manual tracking and reporting
+
+## The Solution
+
+Incidents App modernizes this workflow with:
+
+<CardGroup cols={2}>
+  <Card title="QR Code Integration" icon="qrcode">
+    Guests scan a QR code in their room to instantly report incidents
+  </Card>
+  <Card title="Real-Time Tracking" icon="chart-line">
+    All stakeholders see incident status updates instantly via Supabase
+  </Card>
+  <Card title="Role-Based Access" icon="shield">
+    Custom interfaces for guests, employees, and administrators
+  </Card>
+  <Card title="Mobile-First Design" icon="mobile">
+    Staff can manage incidents from anywhere on the property
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="Guest Reports Incident">
+    A guest scans the QR code in their room and fills out a simple form describing the issue with priority level
+  </Step>
+  <Step title="Staff Receives Notification">
+    The appropriate department receives a push notification with incident details
+  </Step>
+  <Step title="Employee Responds">
+    Staff members view incidents in their mobile app and can claim and resolve them
+  </Step>
+  <Step title="Admin Monitors">
+    Administrators track all incidents in real-time via the web dashboard with analytics
+  </Step>
+</Steps>
+
+## Technology Stack
+
+Incidents App is built with modern, production-ready technologies:
+
+### Mobile App
+- **React Native 0.81** - Cross-platform mobile framework
+- **Expo 54** - Development platform and build service
+- **Expo Router 6** - File-based navigation
+- **Supabase** - Backend and real-time database
+- **TypeScript** - Type-safe development
+
+### Web Dashboard
+- **Next.js 16** - React framework with App Router
+- **React 19** - Latest React features
+- **Supabase SSR** - Server-side auth and data fetching
+- **Tailwind CSS 4** - Utility-first styling
+- **shadcn/ui** - Component library
+
+### Backend
+- **Supabase** - PostgreSQL database, authentication, and real-time subscriptions
+- **Expo Secure Store** - Encrypted credential storage on mobile
+- **Row Level Security** - Database-level authorization
+
+## Key Features
+
+### For Guests
+- Scan QR code to identify room automatically
+- Report incidents with priority levels
+- Track incident status in real-time
+- Simple, intuitive interface
+
+### For Employees
+- View assigned incidents in personal task list
+- Access "buzon" (inbox) of unassigned incidents by area
+- Resolve incidents with notes
+- Receive push notifications
+
+### For Administrators
+- Create and manage guest check-in sessions
+- Manage user accounts and permissions
+- View analytics and incident metrics
+- Generate QR codes for rooms
+- Monitor all incidents across the property
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Guest Room Maintenance">
+    A guest notices the air conditioning isn't cooling properly. They scan the QR code, select "Alta" priority, choose "Climatización" area, and describe the issue. Maintenance staff receives an instant notification and resolves it within the hour.
+  </Accordion>
+  <Accordion title="Housekeeping Requests">
+    A guest needs extra towels. They report a low-priority incident under "Housekeeping". The housekeeping team sees it in their mobile app and delivers towels within minutes.
+  </Accordion>
+  <Accordion title="Facility Issues">
+    An employee notices a light out in the hallway. They open their employee app, create an incident for the maintenance area, and facilities staff is automatically notified.
+  </Accordion>
+  <Accordion title="Operations Analytics">
+    Hotel management reviews the web dashboard analytics to identify recurring issues, measure response times, and optimize staffing for each department.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Set up your development environment and run the app
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand the system architecture and data flow
+  </Card>
+  <Card title="Mobile App Guide" icon="mobile" href="/mobile/overview">
+    Learn about the React Native mobile application
+  </Card>
+  <Card title="Web Dashboard" icon="browser" href="/web/overview">
+    Explore the Next.js admin dashboard
+  </Card>
+</CardGroup>

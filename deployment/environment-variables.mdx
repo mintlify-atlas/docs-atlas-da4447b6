@@ -1,0 +1,356 @@
+---
+title: 'Environment Variables'
+description: 'Configure environment variables for mobile and web apps'
+---
+
+## Overview
+
+The Incidents App uses environment variables to configure both the mobile app and web dashboard. This guide covers all required and optional environment variables for each platform.
+
+<Warning>
+Never commit environment files (`.env`, `.env.local`) to version control. These contain sensitive credentials.
+</Warning>
+
+## Mobile App Environment Variables
+
+The mobile app uses environment variables prefixed with `EXPO_PUBLIC_` to make them accessible in the client.
+
+### Required Variables
+
+Create a `.env` file in the `mobile` directory:
+
+```bash mobile/.env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### Variable Reference
+
+<ParamField path="EXPO_PUBLIC_SUPABASE_URL" type="string" required>
+  The URL of your Supabase project. Find this in your Supabase project settings under API.
+  
+  **Format**: `https://[project-id].supabase.co`
+</ParamField>
+
+<ParamField path="EXPO_PUBLIC_SUPABASE_ANON_KEY" type="string" required>
+  The anonymous (public) API key for your Supabase project. This key is safe to use in client-side code.
+  
+  **Location**: Supabase Dashboard → Settings → API → anon public
+</ParamField>
+
+### Usage in Code
+
+Environment variables are accessed in the mobile app:
+
+```typescript mobile/src/services/supabase.ts
+import { createClient } from '@supabase/supabase-js'
+import * as SecureStore from 'expo-secure-store'
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string
+
+export const supabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
+    auth: {
+      storage: ExpoSecureStoreAdapter,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false
+    }
+  }
+)
+```
+
+### EAS Build Configuration
+
+For production builds with EAS, add environment variables to `eas.json`:
+
+```json mobile/eas.json
+{
+  "build": {
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
+      }
+    },
+    "preview": {
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://staging-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "staging-anon-key"
+      }
+    }
+  }
+}
+```
+
+<Info>
+Alternatively, use Expo's encrypted secrets for sensitive values:
+
+```bash
+eas secret:create --scope project --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value your-key
+```
+</Info>
+
+## Web Dashboard Environment Variables
+
+The web dashboard uses Next.js environment variables. Client-side variables must be prefixed with `NEXT_PUBLIC_`.
+
+### Required Variables
+
+Create a `.env.local` file in the `web` directory:
+
+```bash web/.env.local
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### Variable Reference
+
+<ParamField path="NEXT_PUBLIC_SUPABASE_URL" type="string" required>
+  The URL of your Supabase project.
+  
+  **Format**: `https://[project-id].supabase.co`
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_SUPABASE_ANON_KEY" type="string" required>
+  The anonymous (public) API key for your Supabase project.
+  
+  **Location**: Supabase Dashboard → Settings → API → anon public
+</ParamField>
+
+### Usage in Code
+
+#### Client-Side
+
+```typescript web/lib/supabase.ts
+import { createBrowserClient } from "@supabase/ssr";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables");
+}
+
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+```
+
+#### Server-Side
+
+```typescript web/lib/supabase-server.ts
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set() {},
+        remove() {},
+      },
+    }
+  );
+}
+```
+
+### Environment Files
+
+Next.js supports multiple environment files:
+
+| File | Description | Loaded When |
+|------|-------------|-------------|
+| `.env` | Default environment variables | All environments |
+| `.env.local` | Local overrides (not committed) | All environments |
+| `.env.development` | Development-specific variables | `npm run dev` |
+| `.env.production` | Production-specific variables | `npm run build` && `npm start` |
+
+<Warning>
+Only `.env` should be committed to version control. Add `.env*.local` to `.gitignore`.
+</Warning>
+
+### Vercel Configuration
+
+When deploying to Vercel, add environment variables in the project settings:
+
+<Steps>
+  <Step title="Open project settings">
+    Navigate to your project in Vercel Dashboard → Settings → Environment Variables
+  </Step>
+
+  <Step title="Add variables">
+    Add each required variable:
+    
+    - **Key**: `NEXT_PUBLIC_SUPABASE_URL`
+    - **Value**: Your Supabase project URL
+    - **Environment**: Production, Preview, Development
+  </Step>
+
+  <Step title="Redeploy">
+    Redeploy your application for changes to take effect.
+  </Step>
+</Steps>
+
+## Getting Supabase Credentials
+
+To find your Supabase credentials:
+
+<Steps>
+  <Step title="Open Supabase Dashboard">
+    Visit [app.supabase.com](https://app.supabase.com) and select your project.
+  </Step>
+
+  <Step title="Navigate to API settings">
+    Go to **Settings** → **API** in the left sidebar.
+  </Step>
+
+  <Step title="Copy credentials">
+    - **Project URL**: Copy the URL under "Project URL"
+    - **Anon Key**: Copy the key under "Project API keys" → "anon public"
+  </Step>
+</Steps>
+
+<Info>
+The `anon` key is safe to use in client-side code. It respects Row Level Security (RLS) policies.
+</Info>
+
+## Security Best Practices
+
+### Never Expose Service Role Key
+
+Supabase provides two types of API keys:
+
+- **anon (public)**: Safe for client-side use, respects RLS
+- **service_role**: Full database access, NEVER use in client code
+
+<Warning>
+Only use the `service_role` key in secure server environments, never in mobile or web client code.
+</Warning>
+
+### Environment Variable Checklist
+
+<Check>Use `EXPO_PUBLIC_` prefix for Expo mobile app</Check>
+<Check>Use `NEXT_PUBLIC_` prefix for Next.js web app</Check>
+<Check>Never commit `.env.local` or `.env` files with secrets</Check>
+<Check>Use `anon` key for client-side, not `service_role`</Check>
+<Check>Rotate keys if accidentally exposed</Check>
+<Check>Use environment-specific values for staging vs production</Check>
+
+### Rotating Keys
+
+If you accidentally expose your anon key:
+
+<Steps>
+  <Step title="Generate new keys">
+    Go to Supabase Dashboard → Settings → API → Generate new anon key
+  </Step>
+
+  <Step title="Update environment variables">
+    Update the key in all deployment environments (Vercel, EAS, local)
+  </Step>
+
+  <Step title="Redeploy applications">
+    Rebuild and redeploy mobile and web apps with new keys
+  </Step>
+
+  <Step title="Revoke old key">
+    After confirming new key works, revoke the old key in Supabase
+  </Step>
+</Steps>
+
+## Multi-Environment Setup
+
+For staging and production environments:
+
+### Mobile (EAS)
+
+```json mobile/eas.json
+{
+  "build": {
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://prod-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "prod-key"
+      }
+    },
+    "staging": {
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://staging-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "staging-key"
+      }
+    }
+  }
+}
+```
+
+Build for specific environment:
+
+```bash
+eas build --profile staging --platform android
+```
+
+### Web (Vercel)
+
+Create different environment variable sets in Vercel:
+
+- **Production**: Used for `main` branch
+- **Preview**: Used for pull request deployments
+- **Development**: Used for local development
+
+## Troubleshooting
+
+### Variables Not Loading
+
+**Mobile app**:
+- Restart the Metro bundler: `npx expo start --clear`
+- Ensure variables start with `EXPO_PUBLIC_`
+- Check `.env` file is in `mobile/` directory
+
+**Web app**:
+- Restart Next.js dev server
+- Ensure variables start with `NEXT_PUBLIC_` for client-side
+- Check `.env.local` file is in `web/` directory
+
+### Build-Time vs Runtime
+
+Environment variables are embedded at build time. If you change variables:
+
+- **Mobile**: Rebuild the app with EAS
+- **Web**: Redeploy to Vercel or restart the server
+
+### "Missing Supabase environment variables" Error
+
+This error occurs when required variables are not set:
+
+```typescript
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables");
+}
+```
+
+**Solution**: Verify variables are set correctly in your environment file and restart the dev server.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Supabase Setup" icon="database" href="/deployment/supabase-setup">
+    Configure your Supabase backend and database
+  </Card>
+  
+  <Card title="Mobile Deployment" icon="mobile" href="/deployment/mobile">
+    Deploy the mobile app to app stores
+  </Card>
+  
+  <Card title="Web Deployment" icon="globe" href="/deployment/web">
+    Deploy the web dashboard to production
+  </Card>
+</CardGroup>

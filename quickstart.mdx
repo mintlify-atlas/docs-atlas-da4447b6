@@ -1,80 +1,286 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quick Start'
+description: 'Get the Incidents App running locally in minutes'
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+The Incidents App is a monorepo containing two main applications:
+- **Mobile App**: React Native mobile application built with Expo for iOS and Android
+- **Web Dashboard**: Next.js web dashboard for administrators
 
-### Step 1: Set up your local environment
+This guide will walk you through setting up both applications on your local machine.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Info>
+  The entire system uses Supabase as the backend for authentication, database, and real-time features.
+</Info>
 
-### Step 2: Deploy your changes
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+Before you begin, ensure you have the following installed:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- **Node.js**: v20 or higher
+- **npm** or **pnpm**: Package manager
+- **Git**: Version control
+- **Expo CLI**: For mobile development
+- **Supabase Account**: Free tier available at [supabase.com](https://supabase.com)
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  For mobile development, you'll also need either:
+  - iOS Simulator (macOS only) with Xcode installed
+  - Android Emulator with Android Studio
+  - Expo Go app on your physical device
 </Note>
+
+## Installation
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the repository to your local machine:
+    
+    ```bash
+    git clone <repository-url>
+    cd incidents-app
+    ```
+  </Step>
+
+  <Step title="Set Up Supabase">
+    Create a new project in your Supabase dashboard and note down:
+    - Project URL
+    - Anon/Public Key
+    
+    You'll need these for the environment configuration.
+  </Step>
+
+  <Step title="Configure Mobile App">
+    Navigate to the mobile directory and install dependencies:
+    
+    ```bash
+    cd mobile
+    npm install
+    ```
+    
+    Create a `.env` file in the `mobile` directory:
+    
+    ```bash mobile/.env
+    EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
+    EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+    ```
+    
+    <Warning>
+      Never commit your `.env` file to version control. Add it to `.gitignore`.
+    </Warning>
+  </Step>
+
+  <Step title="Configure Web Dashboard">
+    Navigate to the web directory and install dependencies:
+    
+    ```bash
+    cd ../web
+    pnpm install
+    ```
+    
+    Create a `.env.local` file in the `web` directory:
+    
+    ```bash web/.env.local
+    NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+    ```
+  </Step>
+</Steps>
+
+## Running the Applications
+
+### Mobile App
+
+The mobile app uses Expo for development and supports multiple platforms.
+
+<CodeGroup>
+```bash Start Development Server
+cd mobile
+npm start
+```
+
+```bash iOS Simulator
+cd mobile
+npm run ios
+```
+
+```bash Android Emulator
+cd mobile
+npm run android
+```
+
+```bash Web Browser
+cd mobile
+npm run web
+```
+</CodeGroup>
+
+<Tip>
+  After running `npm start`, you can:
+  - Press `i` to open iOS Simulator
+  - Press `a` to open Android Emulator
+  - Press `w` to open in web browser
+  - Scan the QR code with Expo Go app on your phone
+</Tip>
+
+### Web Dashboard
+
+The web dashboard is built with Next.js and runs on port 3000 by default.
+
+<CodeGroup>
+```bash Development
+cd web
+pnpm dev
+```
+
+```bash Production Build
+cd web
+pnpm build
+pnpm start
+```
+</CodeGroup>
+
+Once running, open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Key Features by App
+
+<Card title="Mobile App" icon="mobile">
+  **Admin Users**
+  - Full incident management
+  - User creation and management
+  - Session management
+  - Settings configuration
+  
+  **Employees (Empleados)**
+  - View and update assigned incidents
+  - Track incident status
+  - Access incident details
+  
+  **Guests (Huéspedes)**
+  - QR code scanning for incident reporting
+  - View own incidents
+  - Track incident resolution
+</Card>
+
+<Card title="Web Dashboard" icon="browser">
+  **Admin-Only Access**
+  - Comprehensive incident analytics
+  - Data visualization with charts
+  - Advanced reporting
+  - User role management
+  - System-wide configuration
+</Card>
+
+## Authentication Flow
+
+The app uses Supabase Authentication with role-based access control:
+
+```typescript mobile/app/index.tsx
+const bootstrap = async () => {
+  const { data } = await supabase.auth.getSession();
+
+  if (data.session) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", data.session.user.id)
+      .single();
+
+    if (profile?.role === "admin") {
+      router.replace("/(admin)");
+      return;
+    }
+
+    if (profile?.role === "empleado") {
+      router.replace("/(empleado)");
+      return;
+    }
+
+    await supabase.auth.signOut();
+    router.replace("/(auth)/login");
+    return;
+  }
+
+  const guestSession = await SecureStore.getItemAsync("guest_session");
+
+  if (guestSession) {
+    router.replace("/(guest)/home");
+    return;
+  }
+
+  router.replace("/(auth)/login");
+};
+```
+
+## Verifying Installation
+
+<Steps>
+  <Step title="Check Mobile App">
+    After starting the mobile app, you should see the splash screen followed by the login screen.
+    
+    The app will automatically route users based on their role:
+    - Admins → Admin dashboard
+    - Employees → Employee interface
+    - Guests → Guest home with QR scanner option
+  </Step>
+
+  <Step title="Check Web Dashboard">
+    Navigate to [http://localhost:3000](http://localhost:3000) and verify:
+    - Login page renders correctly
+    - Supabase connection is established
+    - No console errors appear
+  </Step>
+
+  <Step title="Test Authentication">
+    Create a test user in your Supabase dashboard:
+    
+    1. Go to Authentication → Users
+    2. Create a new user
+    3. Add a profile entry in the `profiles` table with role `admin`
+    4. Try logging in with those credentials
+  </Step>
+</Steps>
+
+## Common Issues
+
+<Warning>
+  **Expo Metro Bundler Issues**
+  
+  If you encounter caching issues, clear the cache:
+  ```bash
+  npx expo start --clear
+  ```
+</Warning>
+
+<Warning>
+  **Supabase Connection Errors**
+  
+  Verify your environment variables are correctly set:
+  - Check for typos in `.env` files
+  - Ensure no trailing spaces in URLs or keys
+  - Restart the development server after changing env variables
+</Warning>
+
+<Warning>
+  **Port Already in Use**
+  
+  If port 3000 is already in use for the web dashboard:
+  ```bash
+  pnpm dev -- -p 3001
+  ```
+</Warning>
+
+## Next Steps
+
+Now that you have the applications running:
+
+- Review the [Architecture](/architecture) to understand the system structure
+- Explore the mobile app's file-based routing structure
+- Check out the web dashboard's admin features
+- Configure your Supabase database tables and policies
+
+<Tip>
+  Join the development community and contribute to the project on GitHub!
+</Tip>

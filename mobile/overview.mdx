@@ -1,0 +1,222 @@
+---
+title: 'Mobile App Overview'
+description: 'Comprehensive guide to the Incidents App mobile application'
+---
+
+## Introduction
+
+The Incidents App mobile application is a React Native app built with Expo and Expo Router that provides a comprehensive incident management system for hotels. The app serves three distinct user types with role-based access control.
+
+## Tech Stack
+
+The mobile app is built with modern technologies:
+
+<CardGroup cols={2}>
+  <Card title="Framework" icon="react">
+    React Native with Expo SDK 54
+  </Card>
+  <Card title="Navigation" icon="route">
+    Expo Router 6.0 with file-based routing
+  </Card>
+  <Card title="Backend" icon="database">
+    Supabase for authentication and data
+  </Card>
+  <Card title="UI Components" icon="palette">
+    Custom components with Lucide React Native icons
+  </Card>
+</CardGroup>
+
+## Key Dependencies
+
+```json package.json
+{
+  "dependencies": {
+    "expo": "~54.0.32",
+    "expo-router": "~6.0.22",
+    "@supabase/supabase-js": "^2.91.0",
+    "react-native": "0.81.5",
+    "react-native-bottom-tabs": "^1.1.0",
+    "expo-secure-store": "~15.0.8",
+    "expo-barcode-scanner": "^13.0.1",
+    "lucide-react-native": "^0.563.0",
+    "date-fns": "^4.1.0"
+  }
+}
+```
+
+## Application Structure
+
+The app uses Expo Router's file-based routing system with route groups for role-based access:
+
+```
+app/
+├── (auth)/              # Authentication routes
+│   └── login.tsx        # Login screen
+├── (guest)/             # Guest user routes
+│   ├── home.tsx         # Guest home screen
+│   ├── settings.tsx     # Guest settings
+│   └── incidents/[id].tsx
+├── (empleado)/          # Employee routes
+│   ├── index.tsx        # Employee dashboard
+│   ├── settings.tsx     # Employee settings
+│   └── incidents/[id].tsx
+├── (admin)/             # Admin routes
+│   ├── index.tsx        # Admin dashboard
+│   ├── users.tsx        # User management
+│   ├── createSessions.tsx
+│   └── settings.tsx
+├── (guestScan)/         # QR code scanning
+│   └── scan.tsx
+└── _layout.tsx          # Root layout
+```
+
+## User Roles
+
+<Tabs>
+  <Tab title="Guest">
+    **Guest users** access the app by scanning a QR code provided at hotel check-in.
+    
+    - Report incidents in their room
+    - View their reported incidents
+    - Manage basic preferences
+    - No authentication required (session-based)
+  </Tab>
+  
+  <Tab title="Employee">
+    **Employees** are hotel staff members who handle incident resolution.
+    
+    - View assigned tasks
+    - Browse general incident inbox
+    - Update incident status
+    - Manage their profile and settings
+    - Authenticated via email/password
+  </Tab>
+  
+  <Tab title="Admin">
+    **Administrators** have full system access and management capabilities.
+    
+    - Create guest sessions and QR codes
+    - Manage users (create, edit, delete)
+    - Oversee all incidents
+    - System configuration
+    - Authenticated via email/password
+  </Tab>
+</Tabs>
+
+## Core Features
+
+### Authentication & Authorization
+
+The app implements multi-tier authentication:
+
+- **Supabase Auth** for employees and admins
+- **Session-based** access for guests via QR codes
+- **Expo Secure Store** for persistent session management
+- **Route guards** in layout files to protect role-specific routes
+
+```typescript src/services/supabase.ts
+import { createClient } from '@supabase/supabase-js'
+import * as SecureStore from 'expo-secure-store'
+
+const ExpoSecureStoreAdapter = {
+    getItem: SecureStore.getItemAsync,
+    setItem: SecureStore.setItemAsync,
+    removeItem: SecureStore.deleteItemAsync
+}
+
+export const supabase = createClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+        auth: {
+            storage: ExpoSecureStoreAdapter,
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false
+        }
+    }
+)
+```
+
+### Incident Management
+
+The core functionality revolves around incident tracking:
+
+- **Create** incidents with title, description, priority, and area
+- **Track** incident status (pending, in_progress, resolved)
+- **Assign** incidents to specific employees
+- **Filter** by status, priority, and assignment
+- **Real-time** updates via Supabase subscriptions
+
+### Theme Support
+
+Custom theme system with three modes:
+
+```typescript hooks/useTheme.ts
+export type ThemeMode = "light" | "dark" | "system";
+export type ActiveTheme = "light" | "dark";
+
+export const useTheme = () => {
+    const systemColorScheme = useSystemColorScheme();
+    const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+    
+    const activeTheme: ActiveTheme =
+        themeMode === "system"
+            ? (systemColorScheme ?? "light")
+            : themeMode;
+    
+    return { themeMode, activeTheme, setTheme, isLoading };
+};
+```
+
+## Platform Configuration
+
+```json app.json
+{
+  "expo": {
+    "name": "incidents-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-barcode-scanner",
+      "react-native-bottom-tabs"
+    ]
+  }
+}
+```
+
+## Custom Hooks
+
+The app includes several custom hooks for common functionality:
+
+- `useTheme()` - Theme management
+- `useNotifications()` - Notification preferences
+- `useNavigationDebounce()` - Prevent navigation spam
+- `useDateFormat()` - Consistent date formatting
+- `useColorScheme()` - System color scheme detection
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/mobile/installation">
+    Set up your development environment
+  </Card>
+  <Card title="Configuration" icon="gear" href="/mobile/configuration">
+    Configure app settings and environment
+  </Card>
+  <Card title="Guest Features" icon="user" href="/mobile/guest-features">
+    Learn about guest user capabilities
+  </Card>
+  <Card title="Employee Features" icon="briefcase" href="/mobile/employee-features">
+    Explore employee functionality
+  </Card>
+</CardGroup>

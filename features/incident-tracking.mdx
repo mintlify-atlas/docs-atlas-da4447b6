@@ -1,0 +1,278 @@
+---
+title: 'Incident Tracking System'
+description: 'Learn how the incident tracking system works in the Incidents App, from creation to resolution'
+icon: 'clipboard-list'
+---
+
+The Incidents App provides a comprehensive incident tracking system that allows guests to report issues and staff to manage and resolve them efficiently.
+
+## Overview
+
+The incident tracking system manages the complete lifecycle of incidents from creation to resolution, with real-time status updates and role-based task assignment.
+
+## Incident Lifecycle
+
+<Steps>
+  <Step title="Incident Creation">
+    Guests create incidents through the `CreateIncidentForm` component, providing:
+    - **Title**: Brief description of the issue
+    - **Description**: Detailed explanation
+    - **Priority**: Low (baja), Medium (media), or High (alta)
+    - **Area**: The responsible department
+  </Step>
+  
+  <Step title="Task Assignment">
+    Incidents appear in the area's inbox as pending tasks. Staff members can accept tasks from the general inbox.
+  </Step>
+  
+  <Step title="Progress Tracking">
+    Once accepted, the incident moves through status stages:
+    - `pendiente` (Pending)
+    - `recibida` (Received)
+    - `en_progreso` (In Progress)
+    - `resuelta` (Resolved)
+  </Step>
+  
+  <Step title="Resolution">
+    Staff members resolve incidents by providing a resolution description and optional evidence photos.
+  </Step>
+</Steps>
+
+## Creating Incidents
+
+The `CreateIncidentForm` component handles incident creation with form validation and area selection:
+
+```tsx CreateIncidentForm.tsx
+const handleSubmit = async () => {
+  if (!title.trim() || !description.trim() || !priority || !areaId) {
+    Alert.alert("Error", "Completa todos los campos");
+    return;
+  }
+
+  const raw = await SecureStore.getItemAsync("guest_session");
+  if (!raw) throw new Error("No hay sesión de huésped");
+
+  const guestSession = JSON.parse(raw);
+
+  const { error } = await supabase.from("incidents").insert({
+    title,
+    description,
+    priority,
+    area_id: areaId,
+    room_id: guestSession.room_id,
+  });
+
+  if (error) throw error;
+
+  Alert.alert("Listo", "Incidencia enviada");
+};
+```
+
+<Note>
+Incidents are automatically linked to the guest's room via the `guest_session` stored in secure storage.
+</Note>
+
+## Priority Levels
+
+Incidents support three priority levels with visual indicators:
+
+<CardGroup cols={3}>
+  <Card title="Low Priority" icon="circle" color="#10B981">
+    Non-urgent issues that can be addressed during regular maintenance
+  </Card>
+  <Card title="Medium Priority" icon="circle" color="#F59E0B">
+    Issues requiring attention within the same day
+  </Card>
+  <Card title="High Priority" icon="circle" color="#EF4444">
+    Urgent issues requiring immediate attention
+  </Card>
+</CardGroup>
+
+```tsx Priority Configuration
+const priorityOptions = [
+  { value: "baja", label: "Baja", color: "#10B981", bgColor: "#ECFDF5" },
+  { value: "media", label: "Media", color: "#F59E0B", bgColor: "#FEF3C7" },
+  { value: "alta", label: "Alta", color: "#EF4444", bgColor: "#FEE2E2" },
+];
+```
+
+## Viewing Incidents
+
+### Guest View
+
+Guests can view their submitted incidents through the `MyIncidentsView` component:
+
+```tsx MyIncidentsView.tsx
+const loadIncidents = async () => {
+  const raw = await SecureStore.getItemAsync("guest_session");
+  const guestSession = JSON.parse(raw);
+
+  const { data, error } = await supabase
+    .from("incidents")
+    .select(
+      "id, title, description, priority, status, created_at, areas(name)"
+    )
+    .eq("room_id", guestSession.room_id)
+    .order("created_at", { ascending: false });
+
+  setIncidents((data || []) as unknown as Incident[]);
+};
+```
+
+### Staff View
+
+Staff members see incidents in two views:
+
+<Accordion title="My Tasks">
+Shows incidents assigned to the logged-in employee:
+
+```tsx EmpleadoMyTasks.tsx
+const { data, error } = await supabase
+  .from("incidents")
+  .select(
+    "id, title, description, priority, status, created_at, areas(name)"
+  )
+  .eq("assigned_to", user.id)
+  .order("created_at", { ascending: false });
+```
+</Accordion>
+
+<Accordion title="General Inbox">
+Shows all pending incidents for the employee's area:
+
+```tsx EmpleadoBuzonIncidents.tsx
+const { data, error } = await supabase
+  .from("incidents")
+  .select(
+    "id, title, description, priority, status, created_at, areas(name), rooms(room_code)"
+  )
+  .eq("status", "pendiente")
+  .eq("area_id", areaData.id)
+  .order("created_at", { ascending: false });
+```
+</Accordion>
+
+## Incident Card Component
+
+The `IncidentCard` component displays incident information with visual status indicators:
+
+```tsx IncidentCard.tsx
+const statusConfig: Record<string, { label: string; color: string; textColor: string }> = {
+  pendiente: { label: "Pendiente", color: "#6b72801c", textColor: "#6b7280da" },
+  recibida: { label: "Recibida", color: "#FEF3C7", textColor: "#F59E0B" },
+  en_progreso: {
+    label: "En Progreso",
+    color: "#3b83f61a",
+    textColor: "#3b83f6cd",
+  },
+  resuelta: { label: "Resuelta", color: "#10b98119", textColor: "#10b981c3" },
+};
+```
+
+<Info>
+The card component is reusable across both guest and staff interfaces with different interaction behaviors.
+</Info>
+
+## Task Management
+
+### Accepting Tasks
+
+Staff members can accept tasks from the general inbox:
+
+```tsx incidents/[id].tsx
+const handleAcceptTask = async () => {
+  // Verify task is still pending
+  const { data: currentIncident } = await supabase
+    .from("incidents")
+    .select("status")
+    .eq("id", id)
+    .single();
+
+  if (currentIncident.status !== "pendiente") {
+    Alert.alert(
+      "Tarea no disponible",
+      "Esta tarea ya fue aceptada por otro empleado del área."
+    );
+    return;
+  }
+
+  // Accept the task
+  const { error } = await supabase
+    .from("incidents")
+    .update({
+      status: "recibida",
+      assigned_to: currentUserId,
+    })
+    .eq("id", id);
+};
+```
+
+### Updating Status
+
+Once received, staff can update the status to "in progress" by tapping the status badge:
+
+```tsx
+const handleStatusClick = async () => {
+  if (incident?.status !== "recibida" || !isAssignedToMe) return;
+
+  const { error } = await supabase
+    .from("incidents")
+    .update({
+      status: "en_progreso",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+};
+```
+
+### Rejecting Tasks
+
+Staff can reject tasks to return them to the general inbox:
+
+```tsx
+const handleRejectTask = async () => {
+  const { error } = await supabase
+    .from("incidents")
+    .update({
+      status: "pendiente",
+      assigned_to: null,
+    })
+    .eq("id", id);
+};
+```
+
+## Database Schema
+
+The incidents table structure:
+
+```sql
+CREATE TABLE incidents (
+  id UUID PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  priority TEXT CHECK (priority IN ('baja', 'media', 'alta')),
+  status TEXT CHECK (status IN ('pendiente', 'recibida', 'en_progreso', 'resuelta')),
+  area_id UUID REFERENCES areas(id),
+  room_id UUID REFERENCES rooms(id),
+  assigned_to UUID REFERENCES profiles(id),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Role-Based Access" icon="shield" href="/features/roles-permissions">
+    Learn about role-based access control
+  </Card>
+  <Card title="Real-Time Updates" icon="bolt" href="/features/real-time-updates">
+    See how incidents update in real-time
+  </Card>
+  <Card title="Push Notifications" icon="bell" href="/features/notifications">
+    Get notified about incident updates
+  </Card>
+  <Card title="QR Code Scanning" icon="qrcode" href="/features/qr-scanning">
+    Learn about guest authentication
+  </Card>
+</CardGroup>

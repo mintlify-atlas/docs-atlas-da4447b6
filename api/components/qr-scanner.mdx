@@ -1,0 +1,438 @@
+---
+title: 'QR Scanner'
+description: 'Camera-based QR code scanner for guest authentication and room access'
+icon: 'qrcode'
+---
+
+## Overview
+
+The QR Scanner component provides guest authentication through QR code scanning. It validates access codes, checks session validity, and securely stores guest session data for room-based incident reporting.
+
+## Features
+
+- Camera permission handling with request flow
+- Real-time QR code scanning using device camera
+- Access code validation against Supabase database
+- Session expiration checking
+- Secure session storage using expo-secure-store
+- Animated scan frame with helper text
+- Scan lock mechanism to prevent duplicate scans
+- Error handling with retry capability
+
+## Screen Component
+
+The scanner is implemented as a full-screen component in `mobile/app/(guestScan)/scan.tsx`.
+
+### Usage
+
+```tsx
+import GuestScanScreen from './(guestScan)/scan'
+
+export default function App() {
+  return <GuestScanScreen />
+}
+```
+
+## States
+
+The scanner has two main visual states:
+
+### 1. Initial State (Pre-Scan)
+
+Displays instructions and scan button:
+
+```tsx
+<ScreenPattern title="Iniciar sesión - Huésped" backRoute={'/(auth)/login'}>
+  <View style={styles.container}>
+    <Ionicons name="qr-code-outline" size={120} color="#FF385C" />
+    <AppText style={styles.title}>Escanea tu código</AppText>
+    <AppText style={styles.subtitle}>
+      Usa el código QR dado en el check-out
+    </AppText>
+    <TouchableOpacity style={styles.button} onPress={startScan}>
+      <AppText style={styles.buttonText}>Escanear código QR</AppText>
+    </TouchableOpacity>
+  </View>
+</ScreenPattern>
+```
+
+### 2. Scanning State
+
+Shows live camera feed with scan frame:
+
+```tsx
+<CameraView
+  style={StyleSheet.absoluteFillObject}
+  barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+  onBarcodeScanned={handleScan}
+/>
+<View style={styles.overlay}>
+  <View style={styles.scanFrame} />
+  <AppText style={styles.helperText}>
+    Alinea el código QR dentro del marco
+  </AppText>
+  <TouchableOpacity onPress={cancelScan}>
+    <AppText>Cancelar</AppText>
+  </TouchableOpacity>
+</View>
+```
+
+## Internal State
+
+<ParamField path="permission" type="PermissionResponse | null">
+  Camera permission status and details from `useCameraPermissions` hook
+</ParamField>
+
+<ParamField path="scanning" type="boolean">
+  Indicates whether the camera is actively scanning for QR codes
+</ParamField>
+
+<ParamField path="scanLock" type="useRef<boolean>">
+  Reference to prevent processing multiple scans simultaneously. Set to `true` when a scan is being processed, `false` when ready for new scans
+</ParamField>
+
+## Methods
+
+### startScan()
+
+Initiates the QR scanning process:
+
+```typescript
+async function startScan() {
+  // Check camera permission
+  if (!permission || permission.status !== 'granted') {
+    const res = await requestPermission()
+    if (!res.granted) {
+      Alert.alert(
+        'Permiso requerido',
+        'Necesitamos acceso a la cámara para escanear el código QR'
+      )
+      return
+    }
+  }
+
+  // Reset lock and start scanning
+  scanLock.current = false
+  setScanning(true)
+}
+```
+
+**Behavior:**
+- Requests camera permission if not already granted
+- Shows alert if permission denied
+- Resets scan lock to allow scanning
+- Transitions to scanning state
+
+### handleScan({ data })
+
+Processes scanned QR code data:
+
+```typescript
+async function handleScan({ data }: { data: string }) {
+  // Prevent duplicate processing
+  if (scanLock.current) return
+  scanLock.current = true
+  setScanning(false)
+
+  // Parse access code
+  let accessCode
+  try {
+    const parsed = JSON.parse(data)
+    accessCode = parsed.access_code
+  } catch {
+    accessCode = data
+  }
+
+  // Validate code exists
+  if (!accessCode) {
+    Alert.alert('Código inválido', 'El QR no contiene un código válido')
+    return
+  }
+
+  // Query database for session
+  const { data: session, error } = await supabase
+    .from('guest_sessions')
+    .select('*')
+    .eq('access_code', accessCode)
+    .eq('active', true)
+    .single()
+
+  // Check if session found
+  if (error || !session) {
+    Alert.alert('Código inválido', 'El código no es válido o ya expiró')
+    return
+  }
+
+  // Check expiration
+  const now = new Date()
+  if (new Date(session.expires_at) < now) {
+    Alert.alert('Código expirado', 'Este código ya no es válido')
+    return
+  }
+
+  // Store session and navigate
+  await SecureStore.setItemAsync('guest_session', JSON.stringify(session))
+  router.replace('/(guest)/home')
+}
+```
+
+**Parameters:**
+
+<ParamField path="data" type="string" required>
+  Raw QR code string data. Can be either:
+  - Plain access code string (e.g., "ABC123")
+  - JSON string with `access_code` field (e.g., `{"access_code": "ABC123"}`)
+</ParamField>
+
+**Validation Flow:**
+
+1. **Scan Lock Check**: Prevents duplicate processing
+2. **Data Parsing**: Attempts JSON parse, falls back to raw string
+3. **Code Validation**: Ensures access code exists
+4. **Database Query**: Fetches matching active session
+5. **Expiration Check**: Validates session is still valid
+6. **Session Storage**: Saves to SecureStore
+7. **Navigation**: Routes to guest home screen
+
+**Error Cases:**
+
+- **Invalid QR**: No access code in scanned data
+- **Invalid Code**: Code not found or session inactive
+- **Expired Code**: Session expiration date has passed
+
+All errors show an alert with "Intentar de nuevo" button that resets the scan lock.
+
+## QR Code Format
+
+The scanner accepts two QR code formats:
+
+### JSON Format (Recommended)
+
+```json
+{
+  "access_code": "ABC123XYZ"
+}
+```
+
+### Plain Text Format
+
+```text
+ABC123XYZ
+```
+
+Both formats extract the same access code for validation.
+
+## Database Integration
+
+### Guest Sessions Table
+
+```sql
+CREATE TABLE guest_sessions (
+  id UUID PRIMARY KEY,
+  access_code TEXT UNIQUE NOT NULL,
+  room_id UUID REFERENCES rooms(id),
+  active BOOLEAN DEFAULT true,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+)
+```
+
+### Query Structure
+
+```typescript
+const { data: session, error } = await supabase
+  .from('guest_sessions')
+  .select('*')
+  .eq('access_code', accessCode)
+  .eq('active', true)
+  .single()
+```
+
+Retrieves a single active session matching the scanned access code.
+
+## Secure Storage
+
+Stores validated session in SecureStore:
+
+```typescript
+await SecureStore.setItemAsync('guest_session', JSON.stringify(session))
+```
+
+**Stored Data:**
+
+```typescript
+type GuestSession = {
+  id: string
+  access_code: string
+  room_id: string
+  active: boolean
+  expires_at: string
+  created_at: string
+}
+```
+
+This session data is used by `CreateIncidentForm` to associate incidents with the guest's room.
+
+## Camera Configuration
+
+```tsx
+<CameraView
+  style={StyleSheet.absoluteFillObject}
+  barcodeScannerSettings={{
+    barcodeTypes: ['qr']
+  }}
+  onBarcodeScanned={handleScan}
+/>
+```
+
+<ParamField path="barcodeScannerSettings" type="{ barcodeTypes: string[] }">
+  Configures scanner to only detect QR codes (ignores barcodes, Data Matrix, etc.)
+</ParamField>
+
+<ParamField path="onBarcodeScanned" type="(scanningResult: BarcodeScanningResult) => void">
+  Callback triggered when a QR code is detected. Receives object with `data` string property
+</ParamField>
+
+## UI Elements
+
+### Scan Frame
+
+```typescript
+scanFrame: {
+  width: 240,
+  height: 240,
+  borderWidth: 2,
+  borderColor: '#FF385C',
+  borderRadius: 16,
+}
+```
+
+Visual guide showing users where to position the QR code.
+
+### Helper Text
+
+```tsx
+<AppText style={styles.helperText}>
+  Alinea el código QR dentro del marco
+</AppText>
+```
+
+Instructions displayed during scanning.
+
+### Cancel Button
+
+```tsx
+<TouchableOpacity
+  style={styles.cancelButton}
+  onPress={() => {
+    scanLock.current = false
+    setScanning(false)
+  }}
+>
+  <AppText style={styles.cancelText}>Cancelar</AppText>
+</TouchableOpacity>
+```
+
+Allows users to exit scanning mode without completing authentication.
+
+## Dependencies
+
+- `@/components/AppText` - Custom text component
+- `@/components/ui/ScreenPattern` - Layout wrapper with header
+- `@/src/services/supabase` - Supabase client
+- `@expo/vector-icons` - Ionicons for QR icon
+- `expo-camera` - Camera access and QR scanning
+- `expo-router` - Navigation
+- `expo-secure-store` - Secure session storage
+- `react-native` - Core UI components
+
+## Complete Flow Diagram
+
+```
+1. User opens Guest Scan screen
+   ↓
+2. Taps "Escanear código QR"
+   ↓
+3. App requests camera permission (if needed)
+   ↓
+4. Camera view opens with scan frame
+   ↓
+5. User aligns QR code with frame
+   ↓
+6. Camera detects QR code
+   ↓
+7. App parses access code
+   ↓
+8. Query database for matching session
+   ↓
+9. Validate session is active and not expired
+   ↓
+10. Store session in SecureStore
+    ↓
+11. Navigate to guest home screen
+```
+
+## Error Handling
+
+All error cases display alerts with retry options:
+
+### Permission Denied
+
+```typescript
+Alert.alert(
+  'Permiso requerido',
+  'Necesitamos acceso a la cámara para escanear el código QR'
+)
+```
+
+### Invalid QR Code
+
+```typescript
+Alert.alert(
+  'Código inválido',
+  'El QR no contiene un código válido',
+  [{ text: 'Intentar de nuevo', onPress: () => { scanLock.current = false } }]
+)
+```
+
+### Invalid/Inactive Session
+
+```typescript
+Alert.alert(
+  'Código inválido',
+  'El código no es válido o ya expiró',
+  [{ text: 'Intentar de nuevo', onPress: () => { scanLock.current = false } }]
+)
+```
+
+### Expired Session
+
+```typescript
+Alert.alert(
+  'Código expirado',
+  'Este código ya no es válido',
+  [{ text: 'Aceptar', onPress: () => { scanLock.current = false } }]
+)
+```
+
+All retry buttons reset `scanLock.current` to allow scanning again.
+
+## Security Considerations
+
+- Access codes validated against database (not client-side)
+- Session expiration enforced server-side and client-side
+- Only active sessions accepted
+- Session data stored in encrypted SecureStore
+- Scan lock prevents race conditions
+- Single-use validation pattern (session deactivated after first use recommended)
+
+## Testing
+
+To test the QR scanner:
+
+1. **Generate Test QR Code**: Create QR with access code from `guest_sessions` table
+2. **Ensure Valid Session**: Verify session is active and not expired
+3. **Test Permission Flow**: Deny permission first, then grant
+4. **Test Invalid Codes**: Scan QR with non-existent access code
+5. **Test Expired Sessions**: Use access code with past `expires_at` date
+6. **Test Cancel Flow**: Start scan and press cancel button

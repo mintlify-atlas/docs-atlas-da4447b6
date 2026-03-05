@@ -1,0 +1,298 @@
+---
+title: 'IncidentCard'
+description: 'Card component for displaying incident information with priority, status, and area badges'
+icon: 'credit-card'
+---
+
+## Overview
+
+The `IncidentCard` component renders a touchable card displaying incident details including title, description, priority level, status, area, and creation date. It supports both employee and guest views with customizable navigation.
+
+## Features
+
+- Displays incident title, description (truncated to 2 lines)
+- Color-coded priority badges (baja, media, alta, urgente)
+- Status indicators with dot and label
+- Area/department badges
+- Formatted timestamps
+- Optional press handling and disabled state
+- Automatic routing based on user role
+
+## Usage
+
+### Basic Usage
+
+```tsx
+import { IncidentCard } from '@/components/IncidentCard'
+
+export default function IncidentsList() {
+  const incident = {
+    id: '123',
+    title: 'Aire acondicionado no enfría',
+    description: 'El aire de la habitación 302 no está enfriando...',
+    priority: 'alta',
+    status: 'en_progreso',
+    created_at: '2024-03-05T10:30:00Z',
+    areas: {
+      name: 'mantenimiento'
+    }
+  }
+
+  return <IncidentCard incident={incident} />
+}
+```
+
+### Custom Press Handler
+
+```tsx
+<IncidentCard
+  incident={incident}
+  onPress={() => {
+    console.log('Card pressed:', incident.id)
+    // Custom navigation logic
+  }}
+/>
+```
+
+### Disabled State
+
+```tsx
+<IncidentCard
+  incident={incident}
+  disabled={true}
+/>
+```
+
+## Props
+
+<ParamField path="incident" type="Incident" required>
+  The incident object containing all display information
+</ParamField>
+
+<ParamField path="onPress" type="() => void">
+  Optional callback function when the card is pressed. If not provided, defaults to navigating to the incident detail page based on user role (employee or guest)
+</ParamField>
+
+<ParamField path="disabled" type="boolean" default="false">
+  When `true`, the card is not touchable and displays as a static view
+</ParamField>
+
+## Types
+
+### Incident
+
+```typescript
+type Incident = {
+  id: string
+  title: string
+  description: string
+  priority: "baja" | "media" | "alta"
+  status: string
+  created_at: string
+  areas: {
+    name: string
+  }
+}
+```
+
+<ParamField path="id" type="string">
+  Unique identifier for the incident
+</ParamField>
+
+<ParamField path="title" type="string">
+  The incident title displayed at the top of the card
+</ParamField>
+
+<ParamField path="description" type="string">
+  Full description of the incident (truncated to 2 lines in display)
+</ParamField>
+
+<ParamField path="priority" type="'baja' | 'media' | 'alta'">
+  Priority level determining badge color
+</ParamField>
+
+<ParamField path="status" type="string">
+  Current status (pendiente, recibida, en_progreso, resuelta)
+</ParamField>
+
+<ParamField path="created_at" type="string">
+  ISO 8601 timestamp of when the incident was created
+</ParamField>
+
+<ParamField path="areas" type="{ name: string }">
+  Associated area/department object
+</ParamField>
+
+## Priority Configuration
+
+Priorities are displayed with color-coded badges:
+
+```typescript
+const priorityConfig = {
+  baja: { label: "Baja", color: "#10B981", bgColor: "#ECFDF5" },
+  media: { label: "Media", color: "#F59E0B", bgColor: "#FEF3C7" },
+  alta: { label: "Alta", color: "#EF4444", bgColor: "#FEE2E2" },
+  urgente: { label: "Urgente", color: "#ff0000", bgColor: "#ff9595" },
+}
+```
+
+- **baja**: Green badge (#10B981)
+- **media**: Orange badge (#F59E0B)
+- **alta**: Red badge (#EF4444)
+- **urgente**: Bright red badge (#ff0000)
+
+## Status Configuration
+
+Status badges display with a colored dot and label:
+
+```typescript
+const statusConfig = {
+  pendiente: { label: "Pendiente", color: "#6b72801c", textColor: "#6b7280da" },
+  recibida: { label: "Recibida", color: "#FEF3C7", textColor: "#F59E0B" },
+  en_progreso: { label: "En Progreso", color: "#3b83f61a", textColor: "#3b83f6cd" },
+  resuelta: { label: "Resuelta", color: "#10b98119", textColor: "#10b981c3" },
+}
+```
+
+- **pendiente**: Gray indicator
+- **recibida**: Orange indicator
+- **en_progreso**: Blue indicator
+- **resuelta**: Green indicator
+
+## Card Structure
+
+The card is organized into three main sections:
+
+### Header
+
+```tsx
+<View style={styles.cardHeader}>
+  <AppText style={styles.cardTitle}>{incident.title}</AppText>
+  <View style={styles.badges}>
+    {/* Priority badge */}
+  </View>
+</View>
+```
+
+### Body
+
+```tsx
+<AppText style={styles.description} numberOfLines={2}>
+  {incident.description}
+</AppText>
+```
+
+### Footer
+
+```tsx
+<View style={styles.cardFooter}>
+  <View style={styles.badgesRow}>
+    {/* Status badge */}
+    {/* Area badge */}
+  </View>
+  <AppText style={styles.date}>
+    {formatDateTime(incident.created_at)}
+  </AppText>
+</View>
+```
+
+## Navigation Behavior
+
+The component includes two versions with different default navigation:
+
+### Employee Version
+
+Located in `mobile/components/IncidentCard.tsx`:
+
+```typescript
+router.push(`/(empleado)/incidents/${incident.id}`)
+```
+
+### Guest Version
+
+Located in `mobile/components/MyIncidentsCard.tsx`:
+
+```typescript
+router.push(`/(guest)/incidents/${incident.id}`)
+```
+
+## Dependencies
+
+- `@/components/AppText` - Custom text component
+- `@/hooks/use-date-format` - Date formatting hook
+- `expo-router` - Navigation
+- `react-native` - Core UI components
+
+## Hooks Used
+
+### useDateFormat
+
+```typescript
+const { formatDateTime } = useDateFormat()
+```
+
+Formats ISO date strings into localized, readable timestamps.
+
+## Styling
+
+The card has the following visual characteristics:
+
+- White background with rounded corners (14px radius)
+- Subtle shadow (elevation: 2)
+- 12px padding
+- 10px gap between sections
+- Border at footer top (#F1F5F9)
+
+## Complete Example
+
+```tsx
+import { IncidentCard, type Incident } from '@/components/IncidentCard'
+import { FlatList, StyleSheet, View } from 'react-native'
+
+const incidents: Incident[] = [
+  {
+    id: '1',
+    title: 'Aire no enfría',
+    description: 'El aire acondicionado de la habitación 302 no está funcionando',
+    priority: 'alta',
+    status: 'en_progreso',
+    created_at: '2024-03-05T10:30:00Z',
+    areas: { name: 'mantenimiento' }
+  },
+  {
+    id: '2',
+    title: 'Bombilla fundida',
+    description: 'Se necesita reemplazar la bombilla del baño',
+    priority: 'baja',
+    status: 'pendiente',
+    created_at: '2024-03-05T11:15:00Z',
+    areas: { name: 'mantenimiento' }
+  },
+]
+
+export default function IncidentsList() {
+  return (
+    <FlatList
+      data={incidents}
+      renderItem={({ item }) => <IncidentCard incident={item} />}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.list}
+    />
+  )
+}
+
+const styles = StyleSheet.create({
+  list: {
+    padding: 16,
+    gap: 12,
+  },
+})
+```
+
+## Accessibility
+
+- Touchable opacity provides visual feedback (0.7)
+- Text truncation prevents layout breaking
+- Sufficient color contrast for all badges
+- Touch target meets minimum size requirements
+- Status indicators use both color and text labels

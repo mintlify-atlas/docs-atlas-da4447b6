@@ -1,0 +1,514 @@
+---
+title: 'Real-Time Data Synchronization'
+description: 'Learn how the Incidents App keeps data synchronized in real-time across all users'
+icon: 'bolt'
+---
+
+The Incidents App provides near real-time data updates to ensure all users see the latest incident information without manual refreshing.
+
+## Overview
+
+While the app doesn't currently implement WebSocket-based real-time subscriptions, it uses several strategies to provide timely data updates:
+
+<CardGroup cols={3}>
+  <Card title="Focus-Based Refresh" icon="eye">
+    Automatically reload data when screens come into focus
+  </Card>
+  <Card title="Pull-to-Refresh" icon="arrows-rotate">
+    Manual refresh trigger for users to update data
+  </Card>
+  <Card title="Action-Based Reload" icon="refresh">
+    Reload data after mutations and state changes
+  </Card>
+</CardGroup>
+
+## Focus-Based Updates
+
+The app uses Expo Router's `useFocusEffect` to reload data when screens become active:
+
+### Employee Task List
+
+```tsx EmpleadoMyTasks.tsx
+import { useFocusEffect } from 'expo-router'
+import { useCallback } from 'react'
+
+export const EmpleadoMyTasks = () => {
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadIncidents()
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      loadIncidents()
+    }, []),
+  )
+
+  const loadIncidents = async () => {
+    // Fetch latest data from Supabase
+    const { data, error } = await supabase
+      .from("incidents")
+      .select("id, title, description, priority, status, created_at, areas(name)")
+      .eq("assigned_to", user.id)
+      .order("created_at", { ascending: false })
+    
+    setIncidents(data || [])
+  }
+}
+```
+
+<Note>
+`useFocusEffect` runs every time the screen comes into focus, ensuring users always see fresh data when navigating back to a screen.
+</Note>
+
+### General Inbox
+
+The same pattern is used for the general inbox:
+
+```tsx EmpleadoBuzonIncidents.tsx
+useFocusEffect(
+  useCallback(() => {
+    loadIncidents()
+  }, []),
+)
+```
+
+## Pull-to-Refresh
+
+Users can manually trigger a data refresh by pulling down on lists:
+
+```tsx EmpleadoBuzonIncidents.tsx
+import { RefreshControl } from 'react-native'
+
+export const EmpleadoBuzonIncidents = () => {
+  const [refreshing, setRefreshing] = useState(false)
+
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await loadIncidents()
+    setRefreshing(false)
+  }
+
+  return (
+    <FlatList
+      data={incidents}
+      renderItem={renderIncident}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#2563EB"
+          colors={["#2563EB"]}
+        />
+      }
+    />
+  )
+}
+```
+
+<Steps>
+  <Step title="User Pulls Down">
+    User initiates pull-to-refresh gesture on the list
+  </Step>
+  
+  <Step title="Loading State">
+    `refreshing` state is set to true, showing loading indicator
+  </Step>
+  
+  <Step title="Data Fetch">
+    `loadIncidents()` fetches fresh data from Supabase
+  </Step>
+  
+  <Step title="UI Update">
+    New data is displayed and loading indicator disappears
+  </Step>
+</Steps>
+
+## Action-Based Reloading
+
+After user actions that modify data, the app reloads to show the updated state:
+
+### After Accepting a Task
+
+```tsx incidents/[id].tsx
+const handleAcceptTask = async () => {
+  setActionLoading(true)
+
+  const { error } = await supabase
+    .from("incidents")
+    .update({
+      status: "recibida",
+      assigned_to: currentUserId,
+    })
+    .eq("id", id)
+
+  if (!error) {
+    Alert.alert("Éxito", "Has aceptado la tarea correctamente", [
+      {
+        text: "OK",
+        onPress: () => loadIncident(), // Reload to show updated state
+      },
+    ])
+  }
+
+  setActionLoading(false)
+}
+```
+
+### After Status Update
+
+```tsx
+const handleStatusClick = async () => {
+  if (incident?.status !== "recibida" || !isAssignedToMe) return
+
+  setActionLoading(true)
+
+  const { error } = await supabase
+    .from("incidents")
+    .update({
+      status: "en_progreso",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+
+  if (!error) {
+    await loadIncident() // Reload to reflect new status
+  }
+
+  setActionLoading(false)
+}
+```
+
+### After Resolving an Incident
+
+```tsx
+const handleResolveSuccess = () => {
+  Alert.alert("Éxito", "Has marcado la incidencia como resuelta", [
+    {
+      text: "OK",
+      onPress: () => {
+        loadIncident() // Reload to show resolution details
+      },
+    },
+  ])
+}
+```
+
+## Loading States
+
+The app uses skeleton screens to provide feedback during data loading:
+
+```tsx
+const IncidentSkeleton = () => {
+  const pulseAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start()
+  }, [])
+
+  const opacity = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.7],
+  })
+
+  return (
+    <View style={cardStyle}>
+      <Animated.View style={[skeletonStyle, { opacity }]} />
+      {/* More skeleton elements */}
+    </View>
+  )
+}
+```
+
+<Info>
+Skeleton screens improve perceived performance by showing a loading structure that matches the actual content layout.
+</Info>
+
+### Conditional Rendering
+
+```tsx
+if (loading && !refreshing) {
+  return (
+    <FlatList
+      data={[1, 2, 3, 4]}
+      renderItem={() => <IncidentSkeleton />}
+      keyExtractor={(item) => `skeleton-${item}`}
+    />
+  )
+}
+
+if (incidents.length === 0) {
+  return (
+    <EmptyState
+      title="Todo está tranquilo"
+      message="No hay nuevas incidencias reportadas en el buzón."
+    />
+  )
+}
+
+return (
+  <FlatList
+    data={incidents}
+    renderItem={renderIncident}
+    refreshControl={<RefreshControl ... />}
+  />
+)
+```
+
+## Optimistic Updates
+
+While the app doesn't implement full optimistic updates, it uses local state to provide immediate feedback:
+
+```tsx
+const [actionLoading, setActionLoading] = useState(false)
+
+const handleAcceptTask = async () => {
+  setActionLoading(true) // Immediate UI feedback
+  
+  try {
+    const { error } = await supabase.from("incidents").update(...)
+    
+    if (!error) {
+      // Update was successful, reload fresh data
+      await loadIncident()
+    }
+  } finally {
+    setActionLoading(false)
+  }
+}
+```
+
+## Future: Supabase Realtime
+
+For true real-time updates, the app can be enhanced with Supabase Realtime subscriptions:
+
+```typescript Future Implementation
+import { useEffect } from 'react'
+import { supabase } from '@/src/services/supabase'
+
+export const useRealtimeIncidents = (areaId: string) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel('incidents')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'incidents',
+          filter: `area_id=eq.${areaId}`,
+        },
+        (payload) => {
+          console.log('Change received!', payload)
+          // Update local state based on payload
+          if (payload.eventType === 'INSERT') {
+            // New incident added
+          } else if (payload.eventType === 'UPDATE') {
+            // Incident updated
+          } else if (payload.eventType === 'DELETE') {
+            // Incident deleted
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [areaId])
+}
+```
+
+<Accordion title="Benefits of Realtime Subscriptions">
+- Instant updates without polling
+- Reduced server load
+- Better user experience
+- No need for manual refresh
+- Real-time collaboration
+</Accordion>
+
+## Data Consistency
+
+### Race Condition Prevention
+
+When accepting tasks, the app checks current status before updating:
+
+```tsx
+const { data: currentIncident, error: fetchError } = await supabase
+  .from("incidents")
+  .select("status")
+  .eq("id", id)
+  .single()
+
+if (currentIncident.status !== "pendiente") {
+  Alert.alert(
+    "Tarea no disponible",
+    "Esta tarea ya fue aceptada por otro empleado del área."
+  )
+  return
+}
+
+const { error: updateError } = await supabase
+  .from("incidents")
+  .update({
+    status: "recibida",
+    assigned_to: currentUserId,
+  })
+  .eq("id", id)
+```
+
+<Note>
+This check-then-update pattern prevents two employees from accepting the same task simultaneously.
+</Note>
+
+## Query Optimization
+
+### Selective Field Fetching
+
+Only fetch fields needed for the current view:
+
+```tsx
+// List view - minimal fields
+const { data } = await supabase
+  .from("incidents")
+  .select("id, title, priority, status, created_at, areas(name)")
+  .eq("assigned_to", user.id)
+
+// Detail view - all fields with relations
+const { data } = await supabase
+  .from("incidents")
+  .select(`
+    *, 
+    areas(name), 
+    rooms(room_code),
+    incident_resolutions(description, created_at, resolved_by),
+    incident_evidence(image_url)
+  `)
+  .eq("id", id)
+  .single()
+```
+
+### Ordering and Pagination
+
+```tsx
+const { data } = await supabase
+  .from("incidents")
+  .select("*")
+  .eq("area_id", areaId)
+  .order("created_at", { ascending: false })
+  .limit(50) // Pagination
+  .range(0, 49)
+```
+
+## Update Patterns
+
+<CardGroup cols={2}>
+  <Card title="Full Reload" icon="rotate">
+    Reload entire dataset after mutations
+    ```tsx
+    await loadIncidents()
+    ```
+  </Card>
+  <Card title="Single Item Update" icon="edit">
+    Update specific item in local state
+    ```tsx
+    setIncident(updatedIncident)
+    ```
+  </Card>
+  <Card title="Incremental Update" icon="plus">
+    Add new item to existing list
+    ```tsx
+    setIncidents([newIncident, ...incidents])
+    ```
+  </Card>
+  <Card title="Filter Update" icon="filter">
+    Remove items that no longer match criteria
+    ```tsx
+    setIncidents(incidents.filter(i => i.id !== removedId))
+    ```
+  </Card>
+</CardGroup>
+
+## Performance Considerations
+
+### 1. Debounce Updates
+
+Prevent excessive API calls during rapid navigation:
+
+```tsx
+const debouncedLoad = useCallback(
+  debounce(() => loadIncidents(), 300),
+  []
+)
+```
+
+### 2. Cache Data
+
+Consider using a state management library to cache data:
+
+```tsx
+// Using React Query (future enhancement)
+import { useQuery } from '@tanstack/react-query'
+
+const { data, refetch } = useQuery({
+  queryKey: ['incidents', user.id],
+  queryFn: loadIncidents,
+  staleTime: 30000, // Consider data fresh for 30 seconds
+})
+```
+
+### 3. Optimistic UI Updates
+
+Update UI immediately, then sync with server:
+
+```tsx
+const updateStatus = async (incidentId: string, newStatus: string) => {
+  // Optimistic update
+  setIncidents(incidents.map(i => 
+    i.id === incidentId ? { ...i, status: newStatus } : i
+  ))
+  
+  // Server sync
+  const { error } = await supabase
+    .from('incidents')
+    .update({ status: newStatus })
+    .eq('id', incidentId)
+  
+  if (error) {
+    // Rollback on error
+    loadIncidents()
+  }
+}
+```
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Incident Tracking" icon="clipboard-list" href="/features/incident-tracking">
+    See how updates affect incident tracking
+  </Card>
+  <Card title="Push Notifications" icon="bell" href="/features/notifications">
+    Get notified about updates
+  </Card>
+  <Card title="Database" icon="database" href="/api/database-overview">
+    Learn about data structure
+  </Card>
+  <Card title="Performance" icon="gauge" href="/features/real-time-updates">
+    Optimize app performance
+  </Card>
+</CardGroup>

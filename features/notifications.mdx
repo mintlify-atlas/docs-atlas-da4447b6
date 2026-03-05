@@ -1,0 +1,388 @@
+---
+title: 'Push Notification System'
+description: 'Learn how push notifications keep users informed about incident updates and status changes'
+icon: 'bell'
+---
+
+The Incidents App uses Expo Notifications to deliver real-time push notifications for incident updates and status changes.
+
+## Overview
+
+Push notifications keep both guests and staff members informed about important incident updates without requiring them to actively check the app.
+
+<Info>
+Notifications are permission-based and users can control their notification preferences through the app settings.
+</Info>
+
+## Notification Types
+
+<CardGroup cols={2}>
+  <Card title="Guest Notifications" icon="user">
+    - Incident received confirmation
+    - Status updates (accepted, in progress)
+    - Resolution notifications
+  </Card>
+  <Card title="Staff Notifications" icon="briefcase">
+    - New incidents in area
+    - Task assignments
+    - High-priority alerts
+  </Card>
+</CardGroup>
+
+## Implementation
+
+The notification system is implemented using the `useNotifications` hook:
+
+```tsx use-notifications.ts
+import * as Notifications from 'expo-notifications'
+import * as SecureStore from 'expo-secure-store'
+import { useState } from 'react'
+import { Alert, Linking, Platform } from 'react-native'
+import * as Haptics from 'expo-haptics'
+
+export const useNotifications = (storageKey: string) => {
+  const [notifications, setNotifications] = useState(false)
+
+  const initializeNotifications = async () => {
+    const storedValue = await SecureStore.getItemAsync(storageKey)
+    if (storedValue === "true") {
+      setNotifications(true)
+    }
+
+    const { status } = await Notifications.getPermissionsAsync()
+    if (status === "granted") {
+      setNotifications(true)
+      await SecureStore.setItemAsync(storageKey, "true")
+    } else {
+      setNotifications(false)
+      await SecureStore.setItemAsync(storageKey, "false")
+    }
+  }
+
+  return {
+    notifications,
+    setNotifications,
+    initializeNotifications,
+    handleNotificationToggle,
+  }
+}
+```
+
+## Permission Management
+
+### Requesting Permissions
+
+The hook handles permission requests with haptic feedback:
+
+```tsx
+const handleNotificationToggle = async (value: boolean) => {
+  if (value) {
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync()
+
+    if (existingStatus !== "granted") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      const { status } = await Notifications.requestPermissionsAsync()
+
+      if (status !== "granted") {
+        setNotifications(false)
+        await SecureStore.setItemAsync(storageKey, "false")
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+        return
+      }
+    }
+
+    setNotifications(true)
+    await SecureStore.setItemAsync(storageKey, "true")
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+  }
+}
+```
+
+<Note>
+Haptic feedback provides tactile confirmation when toggling notification settings.
+</Note>
+
+## Permission Flow
+
+<Steps>
+  <Step title="Check Existing Permission">
+    Query the current notification permission status using `getPermissionsAsync()`
+  </Step>
+  
+  <Step title="Request If Needed">
+    If not granted, request permission with `requestPermissionsAsync()`
+  </Step>
+  
+  <Step title="Store Preference">
+    Save the user's preference in SecureStore for persistence
+  </Step>
+  
+  <Step title="Provide Feedback">
+    Use haptic feedback to confirm the action
+  </Step>
+</Steps>
+
+## Disabling Notifications
+
+When users want to disable notifications, they're directed to system settings:
+
+```tsx
+if (!value) {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+  Alert.alert(
+    "Desactivar Notificaciones",
+    "Para desactivar completamente las notificaciones, ve a Configuración > Aplicaciones > Amanera > Notificaciones y desactívalas.",
+    [
+      {
+        text: "Entendido",
+        style: "cancel",
+      },
+      {
+        text: "Ir a Configuración",
+        onPress: () => {
+          if (Platform.OS === "ios") {
+            Linking.openURL("app-settings:")
+          } else {
+            Linking.openSettings()
+          }
+        },
+      },
+    ],
+  )
+}
+```
+
+<Accordion title="Why System Settings?">
+On both iOS and Android, disabling notifications at the system level is more reliable than in-app toggles. This ensures users have full control and prevents the app from sending notifications even if the preference gets reset.
+</Accordion>
+
+## Platform-Specific Behavior
+
+### iOS
+
+```tsx
+if (Platform.OS === "ios") {
+  Linking.openURL("app-settings:")
+}
+```
+
+- Uses `app-settings:` URL scheme
+- Opens app-specific settings directly
+- Follows iOS design guidelines
+
+### Android
+
+```tsx
+if (Platform.OS === "android") {
+  Linking.openSettings()
+}
+```
+
+- Opens system settings
+- Users navigate to app notifications
+- Follows Material Design patterns
+
+## Persistence
+
+Notification preferences are stored using SecureStore:
+
+```tsx
+// Save preference
+await SecureStore.setItemAsync(storageKey, "true")
+
+// Load preference on initialization
+const storedValue = await SecureStore.getItemAsync(storageKey)
+if (storedValue === "true") {
+  setNotifications(true)
+}
+```
+
+<Info>
+Each user role (guest/employee) has a separate storage key for notification preferences.
+</Info>
+
+## Usage Example
+
+Integrating the hook in a settings screen:
+
+```tsx SettingsScreen.tsx
+import { useNotifications } from '@/hooks/settings/use-notifications'
+
+export default function SettingsScreen() {
+  const {
+    notifications,
+    initializeNotifications,
+    handleNotificationToggle
+  } = useNotifications('guest_notifications')
+
+  useEffect(() => {
+    initializeNotifications()
+  }, [])
+
+  return (
+    <Switch
+      value={notifications}
+      onValueChange={handleNotificationToggle}
+    />
+  )
+}
+```
+
+## Storage Keys
+
+<CardGroup cols={2}>
+  <Card title="Guest Notifications" icon="user">
+    `guest_notifications`
+  </Card>
+  <Card title="Employee Notifications" icon="briefcase">
+    `employee_notifications`
+  </Card>
+</CardGroup>
+
+## Notification Configuration
+
+Global notification configuration in `app.json`:
+
+```json
+{
+  "expo": {
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#0099ff",
+      "androidMode": "default",
+      "androidCollapsedTitle": "#{unread_notifications} new notifications"
+    }
+  }
+}
+```
+
+## Best Practices
+
+### 1. Initialize on Mount
+
+```tsx
+useEffect(() => {
+  initializeNotifications()
+}, [])
+```
+
+Always initialize notifications when the settings screen mounts to sync with system permissions.
+
+### 2. Use Haptic Feedback
+
+```tsx
+Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+```
+
+Provide tactile feedback to confirm user actions.
+
+### 3. Handle Permission Denial
+
+```tsx
+if (status !== "granted") {
+  setNotifications(false)
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+  // Inform user why notifications are important
+}
+```
+
+Gracefully handle when users deny permissions.
+
+### 4. Persist Preferences
+
+Always save preferences to SecureStore for persistence across app restarts.
+
+## Permission States
+
+<Accordion title="Granted">
+User has allowed notifications. App can send and receive push notifications.
+</Accordion>
+
+<Accordion title="Denied">
+User has explicitly denied notifications. App should respect this choice and not request again.
+</Accordion>
+
+<Accordion title="Undetermined">
+User hasn't been asked yet. Good time to request permission with context.
+</Accordion>
+
+## Notification Payload Structure
+
+Example notification payload for incident updates:
+
+```typescript
+interface NotificationPayload {
+  title: string
+  body: string
+  data: {
+    incidentId: string
+    status: string
+    priority: 'baja' | 'media' | 'alta'
+    type: 'status_update' | 'new_incident' | 'resolution'
+  }
+}
+```
+
+## Handling Received Notifications
+
+Listening for notifications while app is in foreground:
+
+```tsx
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+})
+
+Notifications.addNotificationReceivedListener((notification) => {
+  const { incidentId, type } = notification.request.content.data
+  // Handle notification based on type
+})
+```
+
+## Deep Linking
+
+Notifications can deep link to specific incidents:
+
+```tsx
+Notifications.addNotificationResponseReceivedListener((response) => {
+  const { incidentId } = response.notification.request.content.data
+  
+  if (incidentId) {
+    router.push(`/incidents/${incidentId}`)
+  }
+})
+```
+
+## Testing Notifications
+
+Send a test notification during development:
+
+```tsx
+await Notifications.scheduleNotificationAsync({
+  content: {
+    title: "Test Notification",
+    body: "This is a test notification",
+    data: { incidentId: "123" },
+  },
+  trigger: null, // Send immediately
+})
+```
+
+<Note>
+Test notifications work in development mode on physical devices. Simulators have limited notification support.
+</Note>
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Incident Tracking" icon="clipboard-list" href="/features/incident-tracking">
+    See how notifications integrate with incidents
+  </Card>
+  <Card title="Real-Time Updates" icon="bolt" href="/features/real-time-updates">
+    Learn about real-time data synchronization
+  </Card>
+</CardGroup>

@@ -1,0 +1,384 @@
+---
+title: "Web Dashboard Configuration"
+description: "Configure the Next.js web dashboard settings and environment"
+---
+
+## Environment Variables
+
+The web dashboard requires configuration through environment variables. Create a `.env.local` file in the `web/` directory:
+
+```bash .env.local
+# Supabase Configuration (Required)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+
+# Optional: Custom Configuration
+NEXT_PUBLIC_APP_NAME="Incidents App"
+NEXT_PUBLIC_SUPPORT_EMAIL=support@yourhotel.com
+```
+
+<Warning>
+  All variables prefixed with `NEXT_PUBLIC_` are exposed to the browser. **Never** use the Supabase `service_role` key in client-side code.
+</Warning>
+
+### Required Variables
+
+<ParamField path="NEXT_PUBLIC_SUPABASE_URL" type="string" required>
+  Your Supabase project URL
+
+  Get this from: Supabase Dashboard → Settings → API → Project URL
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_SUPABASE_ANON_KEY" type="string" required>
+  Your Supabase anonymous/public API key
+
+  Get this from: Supabase Dashboard → Settings → API → Project API keys → `anon` `public`
+</ParamField>
+
+### Optional Variables
+
+<ParamField path="NEXT_PUBLIC_APP_NAME" type="string" default="Incidents App">
+  Application name displayed in the dashboard header
+</ParamField>
+
+<ParamField path="NEXT_PUBLIC_SUPPORT_EMAIL" type="string">
+  Support email address for user assistance
+</ParamField>
+
+## Next.js Configuration
+
+The dashboard's Next.js configuration is defined in `next.config.ts`:
+
+```typescript next.config.ts
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  // Enable React strict mode for better development experience
+  reactStrictMode: true,
+
+  // Configure image domains for external images
+  images: {
+    domains: ['your-supabase-project.supabase.co'],
+  },
+
+  // Experimental features
+  experimental: {
+    // Enable server actions
+    serverActions: true,
+  },
+};
+
+export default nextConfig;
+```
+
+### Image Configuration
+
+If you plan to display user avatars or incident attachments from Supabase Storage:
+
+```typescript
+images: {
+  domains: [
+    'your-project.supabase.co',
+    // Add other image CDN domains
+  ],
+  formats: ['image/avif', 'image/webp'],
+}
+```
+
+## Supabase Client Configuration
+
+The dashboard uses separate Supabase clients for client and server components:
+
+### Client-Side Configuration
+
+```typescript lib/supabase.ts
+import { createBrowserClient } from '@supabase/ssr';
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+```
+
+Usage in client components:
+
+```typescript
+'use client';
+
+import { createClient } from '@/lib/supabase';
+import { useEffect, useState } from 'react';
+
+export function MyClientComponent() {
+  const supabase = createClient();
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    async function loadData() {
+      const { data } = await supabase
+        .from('incidents')
+        .select('*');
+      setData(data);
+    }
+    loadData();
+  }, []);
+
+  return <div>{/* Render data */}</div>;
+}
+```
+
+### Server-Side Configuration
+
+```typescript lib/supabase-server.ts
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
+}
+```
+
+Usage in server components:
+
+```typescript
+import { createClient } from '@/lib/supabase-server';
+
+export default async function ServerComponent() {
+  const supabase = await createClient();
+
+  const { data: incidents } = await supabase
+    .from('incidents')
+    .select('*');
+
+  return <div>{/* Render incidents */}</div>;
+}
+```
+
+## Middleware Configuration
+
+The middleware protects dashboard routes from unauthorized access:
+
+```typescript middleware.ts
+import { NextRequest, NextResponse } from "next/server";
+
+export function middleware(request: NextRequest) {
+    const { pathname } = request.nextUrl;
+
+    if (pathname.startsWith("/dashboard")) {
+        // Check for Supabase auth cookie
+        const hasSession = Array.from(request.cookies.getAll()).some(
+            (c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token")
+        );
+
+        if (!hasSession) {
+            return NextResponse.redirect(new URL("/", request.url));
+        }
+    }
+
+    return NextResponse.next();
+}
+
+export const config = {
+    matcher: ["/dashboard/:path*"],
+};
+```
+
+### Customizing Protected Routes
+
+To protect additional routes, update the matcher:
+
+```typescript
+export const config = {
+  matcher: [
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/settings/:path*"
+  ],
+};
+```
+
+## Tailwind CSS Configuration
+
+The dashboard uses Tailwind CSS v4 with custom design tokens:
+
+```javascript tailwind.config.js
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+        },
+        // ... more color tokens
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;
+```
+
+## shadcn/ui Configuration
+
+The dashboard uses shadcn/ui components. Configuration is in `components.json`:
+
+```json components.json
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "default",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "tailwind.config.js",
+    "css": "app/globals.css",
+    "baseColor": "slate",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils"
+  }
+}
+```
+
+### Adding Components
+
+Add new shadcn/ui components with the CLI:
+
+<CodeGroup>
+```bash pnpm
+pnpm dlx shadcn add button
+pnpm dlx shadcn add card
+```
+
+```bash npx
+npx shadcn add button
+npx shadcn add card
+```
+</CodeGroup>
+
+## TypeScript Configuration
+
+The project uses strict TypeScript:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+```
+
+## Theme Configuration
+
+The dashboard supports light and dark modes through CSS variables defined in `app/globals.css`:
+
+```css globals.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    /* ... more variables */
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    /* ... more variables */
+  }
+}
+```
+
+Toggle theme in components:
+
+```typescript
+import { useTheme } from 'next-themes';
+
+export function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+      Toggle theme
+    </button>
+  );
+}
+```
+
+## Database Configuration
+
+<Info>
+  Database schema and Row Level Security policies must be configured in Supabase. See [Supabase Setup](/deployment/supabase-setup) for details.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Analytics" icon="chart-line" href="/web/analytics">
+    Explore analytics features
+  </Card>
+  <Card title="Incident Management" icon="list-check" href="/web/incident-management">
+    Manage incidents in the dashboard
+  </Card>
+  <Card title="User Management" icon="users" href="/web/user-management">
+    Configure employee accounts
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/web">
+    Deploy to production
+  </Card>
+</CardGroup>

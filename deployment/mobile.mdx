@@ -1,0 +1,287 @@
+---
+title: 'Mobile App Deployment'
+description: 'Deploy the Incidents App to iOS and Android using Expo'
+---
+
+## Overview
+
+The Incidents mobile app is built with Expo and React Native. This guide covers deploying the app to both iOS and Android platforms.
+
+## Prerequisites
+
+Before deploying, ensure you have:
+
+- Node.js 18+ installed
+- Expo CLI installed globally
+- Expo account (create at [expo.dev](https://expo.dev))
+- Apple Developer account (for iOS)
+- Google Play Console account (for Android)
+
+## Installation
+
+<Steps>
+  <Step title="Navigate to mobile directory">
+    ```bash
+    cd mobile
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Create a `.env` file in the `mobile` directory with your Supabase credentials:
+    
+    ```bash
+    EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+    EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+    ```
+    
+    See [Environment Variables](/deployment/environment-variables) for details.
+  </Step>
+</Steps>
+
+## Development Build
+
+Test the app locally before deploying:
+
+<CodeGroup>
+```bash iOS Simulator
+npm run ios
+```
+
+```bash Android Emulator
+npm run android
+```
+
+```bash Web Browser
+npm run web
+```
+
+```bash Start Dev Server
+npm start
+```
+</CodeGroup>
+
+<Info>
+The dev server provides a QR code to test on physical devices using Expo Go app.
+</Info>
+
+## Building for Production
+
+### Using EAS Build
+
+Expo Application Services (EAS) is the recommended way to build production apps.
+
+<Steps>
+  <Step title="Install EAS CLI">
+    ```bash
+    npm install -g eas-cli
+    ```
+  </Step>
+
+  <Step title="Login to Expo">
+    ```bash
+    eas login
+    ```
+  </Step>
+
+  <Step title="Configure EAS">
+    ```bash
+    eas build:configure
+    ```
+    
+    This creates an `eas.json` configuration file.
+  </Step>
+
+  <Step title="Build for iOS">
+    ```bash
+    eas build --platform ios
+    ```
+    
+    <Note>
+    You'll need to provide your Apple Developer credentials and configure signing certificates.
+    </Note>
+  </Step>
+
+  <Step title="Build for Android">
+    ```bash
+    eas build --platform android
+    ```
+  </Step>
+</Steps>
+
+## App Configuration
+
+The app is configured in `app.json` with the following key settings:
+
+```json mobile/app.json
+{
+  "expo": {
+    "name": "incidents-app",
+    "slug": "incidents-app",
+    "version": "1.0.0",
+    "scheme": "fluxomobile",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE"
+      }
+    }
+  }
+}
+```
+
+### Key Configuration Options
+
+- **name**: Display name shown on device home screen
+- **slug**: URL-safe identifier for your app
+- **version**: App version number (increment for updates)
+- **scheme**: Deep linking URL scheme (`fluxomobile://`)
+- **newArchEnabled**: Uses React Native's new architecture
+
+## Submitting to App Stores
+
+### iOS App Store
+
+<Steps>
+  <Step title="Create app in App Store Connect">
+    Visit [App Store Connect](https://appstoreconnect.apple.com) and create a new app.
+  </Step>
+
+  <Step title="Submit build with EAS">
+    ```bash
+    eas submit --platform ios
+    ```
+    
+    Select the build you want to submit from the list.
+  </Step>
+
+  <Step title="Complete App Store listing">
+    Add screenshots, description, and other metadata in App Store Connect.
+  </Step>
+
+  <Step title="Submit for review">
+    Submit your app for Apple's review process.
+  </Step>
+</Steps>
+
+### Google Play Store
+
+<Steps>
+  <Step title="Create app in Play Console">
+    Visit [Google Play Console](https://play.google.com/console) and create a new app.
+  </Step>
+
+  <Step title="Generate upload key">
+    ```bash
+    eas credentials
+    ```
+    
+    Follow prompts to generate Android keystore.
+  </Step>
+
+  <Step title="Submit build with EAS">
+    ```bash
+    eas submit --platform android
+    ```
+  </Step>
+
+  <Step title="Complete Play Store listing">
+    Add screenshots, description, and content ratings in Play Console.
+  </Step>
+
+  <Step title="Release to production">
+    Create a production release in the Play Console.
+  </Step>
+</Steps>
+
+## Over-the-Air Updates
+
+EAS Update allows you to push updates without going through app store review:
+
+```bash
+# Install EAS Update
+npx expo install expo-updates
+
+# Configure updates
+eas update:configure
+
+# Publish an update
+eas update --branch production --message "Fix bug in incident reporting"
+```
+
+<Warning>
+Over-the-air updates only work for JavaScript changes. Native code changes require a new build.
+</Warning>
+
+## Environment-Specific Builds
+
+Create different builds for staging and production:
+
+```json eas.json
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "staging-url"
+      }
+    },
+    "production": {}
+  }
+}
+```
+
+Build specific profiles:
+
+```bash
+eas build --profile preview --platform android
+```
+
+## Troubleshooting
+
+### Build Failures
+
+If builds fail, check:
+
+- All dependencies are compatible with Expo SDK version
+- Native modules are properly configured in `app.json` plugins
+- iOS build properties use static frameworks
+
+### Environment Variables Not Working
+
+Ensure environment variables:
+
+- Start with `EXPO_PUBLIC_` prefix for client-side access
+- Are set in `eas.json` for production builds
+- Are not cached (restart dev server)
+
+### Deep Linking Issues
+
+Verify the `scheme` in `app.json` matches your deep link configuration:
+
+```json
+"scheme": "fluxomobile"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="key" href="/deployment/environment-variables">
+    Configure environment-specific settings
+  </Card>
+  
+  <Card title="Supabase Setup" icon="database" href="/deployment/supabase-setup">
+    Set up your backend database
+  </Card>
+</CardGroup>

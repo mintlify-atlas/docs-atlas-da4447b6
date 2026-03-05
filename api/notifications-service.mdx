@@ -1,0 +1,334 @@
+---
+title: "Notifications Service"
+description: "Push notifications management hook for mobile applications"
+---
+
+## Overview
+
+The `useNotifications` hook manages push notification permissions, state persistence, and user interactions for mobile applications using Expo Notifications.
+
+## Hook API
+
+### `useNotifications(storageKey: string)`
+
+A React hook that provides notification permission management with haptic feedback and persistent storage.
+
+<ParamField path="storageKey" type="string" required>
+  Key used to persist notification preferences in Expo SecureStore
+</ParamField>
+
+### Returns
+
+<ResponseField name="notifications" type="boolean">
+  Current notification permission state
+</ResponseField>
+
+<ResponseField name="setNotifications" type="(value: boolean) => void">
+  Function to manually update notification state
+</ResponseField>
+
+<ResponseField name="initializeNotifications" type="() => Promise<void>">
+  Initializes notification state from storage and system permissions
+</ResponseField>
+
+<ResponseField name="handleNotificationToggle" type="(value: boolean) => Promise<void>">
+  Handles notification toggle with permission requests and user guidance
+</ResponseField>
+
+## Usage
+
+```typescript
+import { useNotifications } from '@/hooks/settings/use-notifications'
+import { useEffect } from 'react'
+import { Switch, View, Text } from 'react-native'
+
+function SettingsScreen() {
+  const {
+    notifications,
+    initializeNotifications,
+    handleNotificationToggle,
+  } = useNotifications('user_notifications_preference');
+
+  useEffect(() => {
+    initializeNotifications();
+  }, []);
+
+  return (
+    <View>
+      <Text>Enable Notifications</Text>
+      <Switch
+        value={notifications}
+        onValueChange={handleNotificationToggle}
+      />
+    </View>
+  );
+}
+```
+
+## Methods
+
+### `initializeNotifications()`
+
+Initializes the notification state by checking stored preferences and system permissions.
+
+```typescript mobile/hooks/settings/use-notifications.ts
+const initializeNotifications = async () => {
+  const storedValue = await SecureStore.getItemAsync(storageKey);
+  if (storedValue === "true") {
+    setNotifications(true);
+  }
+
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status === "granted") {
+    setNotifications(true);
+    await SecureStore.setItemAsync(storageKey, "true");
+  } else {
+    setNotifications(false);
+    await SecureStore.setItemAsync(storageKey, "false");
+  }
+};
+```
+
+**Flow:**
+1. Retrieves stored preference from SecureStore
+2. Checks system-level notification permissions
+3. Updates state based on granted permissions
+4. Persists current permission status to storage
+
+### `handleNotificationToggle(value: boolean)`
+
+Handles notification toggle interactions with permission requests and user feedback.
+
+<ParamField path="value" type="boolean" required>
+  Desired notification state (true to enable, false to disable)
+</ParamField>
+
+#### Enable Notifications (value = true)
+
+```typescript
+const handleNotificationToggle = async (value: boolean) => {
+  if (value) {
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
+
+    if (existingStatus !== "granted") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const { status } = await Notifications.requestPermissionsAsync();
+
+      if (status !== "granted") {
+        setNotifications(false);
+        await SecureStore.setItemAsync(storageKey, "false");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+    }
+
+    setNotifications(true);
+    await SecureStore.setItemAsync(storageKey, "true");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+}
+```
+
+**Flow:**
+1. Checks existing permission status
+2. Requests permission if not granted (with light haptic feedback)
+3. If denied: Sets state to false, persists to storage, plays error haptic
+4. If granted: Sets state to true, persists to storage, plays success haptic
+
+#### Disable Notifications (value = false)
+
+```typescript
+if (value === false) {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  Alert.alert(
+    "Desactivar Notificaciones",
+    "Para desactivar completamente las notificaciones, ve a Configuración > Aplicaciones > Amanera > Notificaciones y desactívalas.",
+    [
+      {
+        text: "Entendido",
+        style: "cancel",
+      },
+      {
+        text: "Ir a Configuración",
+        onPress: () => {
+          if (Platform.OS === "ios") {
+            Linking.openURL("app-settings:");
+          } else {
+            Linking.openSettings();
+          }
+        },
+      },
+    ],
+  );
+}
+```
+
+**Flow:**
+1. Plays medium haptic feedback
+2. Shows alert dialog explaining system settings are required
+3. Provides option to open system settings (iOS: `app-settings:`, Android: `Linking.openSettings()`)
+
+## Haptic Feedback
+
+The hook integrates haptic feedback for enhanced user experience:
+
+<ParamField path="ImpactFeedbackStyle.Light" type="HapticFeedbackStyle">
+  Used when requesting permissions (subtle feedback)
+</ParamField>
+
+<ParamField path="ImpactFeedbackStyle.Medium" type="HapticFeedbackStyle">
+  Used when attempting to disable notifications (moderate feedback)
+</ParamField>
+
+<ParamField path="NotificationFeedbackType.Success" type="HapticFeedbackType">
+  Played when notifications are successfully enabled
+</ParamField>
+
+<ParamField path="NotificationFeedbackType.Error" type="HapticFeedbackType">
+  Played when permission request is denied
+</ParamField>
+
+## Permission States
+
+### Granted
+
+User has granted notification permissions at the system level.
+
+```typescript
+const { status } = await Notifications.getPermissionsAsync();
+if (status === 'granted') {
+  // Notifications enabled
+}
+```
+
+### Denied
+
+User has explicitly denied notification permissions. Requires system settings to re-enable.
+
+```typescript
+const { status } = await Notifications.requestPermissionsAsync();
+if (status !== 'granted') {
+  // Show guidance to enable in settings
+}
+```
+
+### Undetermined
+
+Permission not yet requested. First call to `requestPermissionsAsync()` will show system prompt.
+
+## Storage Persistence
+
+Notification preferences are stored in Expo SecureStore:
+
+```typescript
+// Store preference
+await SecureStore.setItemAsync(storageKey, "true");  // Enabled
+await SecureStore.setItemAsync(storageKey, "false"); // Disabled
+
+// Retrieve preference
+const storedValue = await SecureStore.getItemAsync(storageKey);
+const isEnabled = storedValue === "true";
+```
+
+<ParamField path="storageKey" type="string">
+  Custom key for storing preferences. Use unique keys for different notification types (e.g., `'incident_notifications'`, `'message_notifications'`)
+</ParamField>
+
+## Platform Differences
+
+### iOS
+
+```typescript
+if (Platform.OS === "ios") {
+  Linking.openURL("app-settings:");
+}
+```
+
+- Uses `app-settings:` URL scheme to open app-specific settings
+- Requires Info.plist configuration for notification entitlements
+
+### Android
+
+```typescript
+if (Platform.OS === "android") {
+  Linking.openSettings();
+}
+```
+
+- Uses `Linking.openSettings()` to open system settings
+- May require `POST_NOTIFICATIONS` permission in AndroidManifest.xml (Android 13+)
+
+## Complete Example
+
+```typescript
+import { useNotifications } from '@/hooks/settings/use-notifications'
+import { useEffect } from 'react'
+import { View, Text, Switch, StyleSheet } from 'react-native'
+
+function NotificationSettings() {
+  const {
+    notifications,
+    initializeNotifications,
+    handleNotificationToggle,
+  } = useNotifications('app_notifications');
+
+  useEffect(() => {
+    // Initialize on component mount
+    initializeNotifications();
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.row}>
+        <View style={styles.textContainer}>
+          <Text style={styles.title}>Push Notifications</Text>
+          <Text style={styles.subtitle}>
+            Receive alerts for important updates
+          </Text>
+        </View>
+        <Switch
+          value={notifications}
+          onValueChange={handleNotificationToggle}
+          trackColor={{ false: '#767577', true: '#81b0ff' }}
+          thumbColor={notifications ? '#f5dd4b' : '#f4f3f4'}
+        />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    padding: 16,
+    backgroundColor: '#fff',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  textContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+});
+```
+
+## Best Practices
+
+- Call `initializeNotifications()` in `useEffect` on component mount
+- Use descriptive storage keys for different notification types
+- Always check system permissions, not just stored preferences
+- Provide clear guidance when directing users to system settings
+- Use haptic feedback to acknowledge user interactions
+- Handle permission denial gracefully with helpful messaging

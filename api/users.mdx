@@ -1,0 +1,238 @@
+---
+title: Users Table (Profiles)
+description: Schema documentation for the profiles table used for user management
+---
+
+The `profiles` table stores user information and role-based permissions. It extends Supabase Auth with custom user data.
+
+## Table Name
+
+`profiles`
+
+<Note>
+  This table is typically created via Supabase Auth triggers and stores additional user metadata beyond authentication credentials.
+</Note>
+
+## Schema Fields
+
+<ParamField path="id" type="uuid" required>
+  Primary key, matches the Supabase Auth user ID
+</ParamField>
+
+<ParamField path="email" type="text" required>
+  User's email address, synced from Supabase Auth
+</ParamField>
+
+<ParamField path="full_name" type="text">
+  User's full display name
+</ParamField>
+
+<ParamField path="role" type="text" required>
+  User role for access control
+  
+  **Allowed values:**
+  - `guest` - Hotel guest with temporary access
+  - `empleado` - Staff member (employee)
+  - `admin` - Administrator
+</ParamField>
+
+<ParamField path="area" type="text">
+  Department/area assignment for staff members. Only applicable for `empleado` role.
+  
+  Should match a value from the `areas` table `name` field.
+</ParamField>
+
+<ParamField path="created_at" type="timestamp">
+  Automatically set when the profile is created
+</ParamField>
+
+## Relationships
+
+- **incidents**: One-to-many relationship via `assigned_to` field
+- **incident_resolutions**: One-to-many relationship via `resolved_by` field
+- **areas**: Logical relationship via `area` field (string match on `areas.name`)
+
+## Role Descriptions
+
+<ResponseField name="guest" type="Guest User">
+  Temporary users who report incidents through guest sessions. Guests:
+  - Access the app via QR codes or access codes
+  - Can create and view their own incidents
+  - Have limited permissions tied to their room
+  - Don't appear in the admin users list (filtered by `role != "guest"`)
+</ResponseField>
+
+<ResponseField name="empleado" type="Staff Member">
+  Hotel staff members assigned to specific areas. Employees:
+  - View incidents for their assigned area
+  - Can accept and resolve incidents
+  - Must have an `area` value assigned
+  - Track their task assignments
+</ResponseField>
+
+<ResponseField name="admin" type="Administrator">
+  System administrators with full access. Admins:
+  - Manage all users and incidents
+  - Create guest sessions
+  - Assign staff to areas
+  - Access all system features
+</ResponseField>
+
+## Query Examples
+
+### Fetch User Profile
+
+Retrieve the current user's profile:
+
+```typescript
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("role")
+  .eq("id", userId)
+  .single();
+```
+
+**Source:** `mobile/app/(admin)/_layout.tsx:15`
+
+### List All Staff Members
+
+Fetch all users excluding guests:
+
+```typescript
+const { data, error } = await supabase
+  .from("profiles")
+  .select("*")
+  .neq("role", "guest")
+  .order("created_at", { ascending: false });
+```
+
+**Source:** `mobile/app/(admin)/users.tsx:47`
+
+### Get User by Area
+
+Find staff members assigned to a specific area:
+
+```typescript
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("area")
+  .eq("id", userId)
+  .single();
+
+if (!profile?.area) {
+  throw new Error("User has no area assigned");
+}
+```
+
+**Source:** `mobile/components/EmpleadoBuzonIncidents.tsx:191`
+
+### Create or Update User Profile
+
+Upsert a user profile (used during user creation):
+
+```typescript
+const { error } = await supabase.from("profiles").upsert({
+  id: userId,
+  email: userEmail,
+  full_name: fullName,
+  role: "empleado",
+  area: "mantenimiento",
+});
+```
+
+**Source:** `mobile/components/settings/admin/CreateUserModal.tsx:86`
+
+### Update User Profile
+
+Modify existing user information:
+
+```typescript
+const { error } = await supabase
+  .from("profiles")
+  .update({
+    full_name: newFullName,
+    area: newArea,
+    role: newRole,
+  })
+  .eq("id", userId);
+```
+
+**Source:** `mobile/components/settings/admin/EditUserModal.tsx:75`
+
+### Delete User
+
+```typescript
+const { error } = await supabase
+  .from("profiles")
+  .delete()
+  .eq("id", userId);
+```
+
+**Source:** `mobile/app/(admin)/users.tsx:86`
+
+## Area Assignment
+
+Staff members (empleados) are assigned to specific areas to determine which incidents they can see and handle:
+
+```typescript
+// Check user's area
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("area")
+  .eq("id", userId)
+  .single();
+
+// Find matching area ID
+const { data: areaData } = await supabase
+  .from("areas")
+  .select("id")
+  .eq("name", profile.area)
+  .single();
+
+// Query incidents for that area
+const { data: incidents } = await supabase
+  .from("incidents")
+  .select("*")
+  .eq("area_id", areaData.id);
+```
+
+**Source:** `mobile/components/EmpleadoBuzonIncidents.tsx:191`
+
+## User Interface Example
+
+In the admin UI, user cards display:
+
+```typescript
+interface Profile {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  area: string | null;
+}
+```
+
+**Source:** `mobile/app/(admin)/users.tsx:23`
+
+## Security Considerations
+
+<Warning>
+  - Guest profiles should have Row Level Security (RLS) policies to restrict data access
+  - Employees should only see incidents for their assigned area
+  - Profile updates should be restricted to admins or the profile owner
+  - Role changes should only be performed by admins
+</Warning>
+
+## Related Tables
+
+<CardGroup cols={2}>
+  <Card title="Incidents" icon="triangle-exclamation" href="/api/incidents">
+    Incidents assigned to staff members
+  </Card>
+  <Card title="Areas" icon="building" href="/api/areas">
+    Department assignments
+  </Card>
+  <Card title="Incident Resolutions" icon="check" href="/api/incidents">
+    Resolutions created by staff
+  </Card>
+</CardGroup>

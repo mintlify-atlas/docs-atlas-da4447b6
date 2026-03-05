@@ -1,0 +1,356 @@
+---
+title: 'QR Code Scanning'
+description: 'Learn how QR code scanning enables secure guest authentication in the Incidents App'
+icon: 'qrcode'
+---
+
+The Incidents App uses QR code scanning to provide secure, passwordless authentication for hotel guests.
+
+## Overview
+
+Guests receive a QR code at check-in that grants them access to the incident reporting system. The QR code contains an access code linked to their room and reservation.
+
+<Info>
+QR code authentication eliminates the need for guests to remember passwords while maintaining security through time-limited access codes.
+</Info>
+
+## How It Works
+
+<Steps>
+  <Step title="QR Code Generation">
+    The hotel generates a QR code for each guest containing a unique access code linked to their room reservation.
+  </Step>
+  
+  <Step title="Guest Scans Code">
+    Guests scan the QR code using the app's camera to authenticate.
+  </Step>
+  
+  <Step title="Session Validation">
+    The app validates the access code against the database and checks expiration.
+  </Step>
+  
+  <Step title="Session Creation">
+    A secure guest session is created and stored locally on the device.
+  </Step>
+</Steps>
+
+## Implementation
+
+The QR scanning functionality is implemented in the `scan.tsx` screen using Expo Camera:
+
+```tsx scan.tsx
+import { CameraView, useCameraPermissions } from 'expo-camera'
+import * as SecureStore from 'expo-secure-store'
+
+export default function GuestScanScreen() {
+  const [permission, requestPermission] = useCameraPermissions()
+  const [scanning, setScanning] = useState(false)
+  const scanLock = useRef(false)
+
+  async function startScan() {
+    if (!permission || permission.status !== 'granted') {
+      const res = await requestPermission()
+      if (!res.granted) {
+        Alert.alert(
+          'Permiso requerido',
+          'Necesitamos acceso a la cámara para escanear el código QR'
+        )
+        return
+      }
+    }
+
+    scanLock.current = false
+    setScanning(true)
+  }
+}
+```
+
+## Camera Permissions
+
+The app requests camera permissions before scanning:
+
+<Accordion title="Permission Flow">
+1. Check if permission is already granted
+2. Request permission if needed
+3. Display alert if permission is denied
+4. Enable scanning once permission is granted
+</Accordion>
+
+```tsx
+const [permission, requestPermission] = useCameraPermissions()
+
+if (!permission || permission.status !== 'granted') {
+  const res = await requestPermission()
+  if (!res.granted) {
+    Alert.alert(
+      'Permiso requerido',
+      'Necesitamos acceso a la cámara para escanear el código QR'
+    )
+    return
+  }
+}
+```
+
+## Scanning Process
+
+The camera view is configured to detect QR codes and handle the scan result:
+
+```tsx
+<CameraView
+  style={StyleSheet.absoluteFillObject}
+  barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+  onBarcodeScanned={handleScan}
+/>
+```
+
+### Scan Lock Mechanism
+
+To prevent multiple scans, a ref-based lock is used:
+
+```tsx
+const scanLock = useRef(false)
+
+async function handleScan({ data }: { data: string }) {
+  if (scanLock.current) return
+  scanLock.current = true
+
+  setScanning(false)
+  // Process scan...
+}
+```
+
+<Note>
+The scan lock prevents duplicate processing if the camera detects the same QR code multiple times.
+</Note>
+
+## Data Validation
+
+The scanned data is parsed and validated:
+
+```tsx
+let accessCode
+try {
+  const parsed = JSON.parse(data)
+  accessCode = parsed.access_code
+} catch {
+  accessCode = data
+}
+
+if (!accessCode) {
+  Alert.alert('Código inválido', 'El QR no contiene un código válido', [
+    {
+      text: 'Intentar de nuevo',
+      onPress: () => {
+        scanLock.current = false
+      },
+    },
+  ])
+  return
+}
+```
+
+<Info>
+The code supports both JSON format (`{"access_code": "..."}`}) and plain text format for flexibility.
+</Info>
+
+## Session Verification
+
+The access code is verified against the database:
+
+```tsx
+const { data: session, error } = await supabase
+  .from('guest_sessions')
+  .select('*')
+  .eq('access_code', accessCode)
+  .eq('active', true)
+  .single()
+
+if (error || !session) {
+  Alert.alert(
+    'Código inválido',
+    'El código no es válido o ya expiró',
+    [
+      {
+        text: 'Intentar de nuevo',
+        onPress: () => {
+          scanLock.current = false
+        },
+      },
+    ]
+  )
+  return
+}
+```
+
+### Validation Checks
+
+<CardGroup cols={2}>
+  <Card title="Access Code Match" icon="key">
+    Verifies the code exists in the database
+  </Card>
+  <Card title="Active Status" icon="toggle-on">
+    Ensures the session is currently active
+  </Card>
+  <Card title="Expiration Check" icon="clock">
+    Validates the session hasn't expired
+  </Card>
+  <Card title="Room Link" icon="door-open">
+    Confirms the session is linked to a valid room
+  </Card>
+</CardGroup>
+
+## Expiration Handling
+
+The app checks if the session has expired:
+
+```tsx
+const now = new Date()
+if (new Date(session.expires_at) < now) {
+  Alert.alert(
+    'Código expirado',
+    'Este código ya no es válido',
+    [
+      {
+        text: 'Aceptar',
+        onPress: () => {
+          scanLock.current = false
+        },
+      },
+    ]
+  )
+  return
+}
+```
+
+<Note>
+Expired sessions require guests to obtain a new QR code from hotel staff.
+</Note>
+
+## Session Storage
+
+Successful scans store the session data securely:
+
+```tsx
+await SecureStore.setItemAsync('guest_session', JSON.stringify(session))
+router.replace('/(guest)/home')
+```
+
+The stored session contains:
+- `access_code`: The unique access code
+- `room_id`: Link to the guest's room
+- `expires_at`: Session expiration timestamp
+- `active`: Whether the session is active
+
+## Camera UI
+
+The scanning interface includes a visual frame and helper text:
+
+```tsx
+<View style={styles.overlay}>
+  <View style={styles.scanFrame} />
+  <AppText style={styles.helperText}>
+    Alinea el código QR dentro del marco
+  </AppText>
+
+  <TouchableOpacity
+    style={styles.cancelButton}
+    onPress={() => {
+      scanLock.current = false
+      setScanning(false)
+    }}
+  >
+    <AppText style={styles.cancelText}>Cancelar</AppText>
+  </TouchableOpacity>
+</View>
+```
+
+```tsx styles
+const styles = StyleSheet.create({
+  scanFrame: {
+    width: 240,
+    height: 240,
+    borderWidth: 2,
+    borderColor: '#FF385C',
+    borderRadius: 16,
+  },
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+})
+```
+
+## Error Handling
+
+The scanning process handles multiple error scenarios:
+
+<Accordion title="Permission Denied">
+Displays an alert explaining why camera access is needed.
+</Accordion>
+
+<Accordion title="Invalid QR Code">
+Shows error message and allows retry by unlocking the scan.
+</Accordion>
+
+<Accordion title="Expired Session">
+Informs the guest the code has expired and needs replacement.
+</Accordion>
+
+<Accordion title="Already Used">
+Validates the session is still active and hasn't been deactivated.
+</Accordion>
+
+## Database Schema
+
+The guest_sessions table structure:
+
+```sql
+CREATE TABLE guest_sessions (
+  id UUID PRIMARY KEY,
+  access_code TEXT UNIQUE NOT NULL,
+  room_id UUID REFERENCES rooms(id),
+  active BOOLEAN DEFAULT true,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_guest_sessions_access_code ON guest_sessions(access_code);
+CREATE INDEX idx_guest_sessions_active ON guest_sessions(active);
+```
+
+## Security Features
+
+<CardGroup cols={2}>
+  <Card title="Secure Storage" icon="lock">
+    Sessions are stored using Expo SecureStore with encryption
+  </Card>
+  <Card title="Time-Limited Access" icon="hourglass">
+    Sessions expire automatically to prevent unauthorized access
+  </Card>
+  <Card title="One-Time Use" icon="check">
+    Access codes can be deactivated after check-out
+  </Card>
+  <Card title="Room Isolation" icon="door-closed">
+    Each session is linked to a specific room
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+1. **Always validate permissions** before attempting to scan
+2. **Use scan locks** to prevent duplicate processing
+3. **Handle all error cases** with user-friendly messages
+4. **Store sessions securely** using SecureStore
+5. **Validate expiration** on both client and server
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Guest Sessions" icon="user" href="/api/authentication">
+    Learn about session management
+  </Card>
+  <Card title="Security" icon="shield" href="/features/roles-permissions">
+    Understand security measures
+  </Card>
+</CardGroup>

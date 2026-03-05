@@ -1,0 +1,571 @@
+---
+title: 'Supabase Backend Setup'
+description: 'Set up and configure Supabase as the backend for Incidents App'
+---
+
+## Overview
+
+The Incidents App uses Supabase as its backend-as-a-service platform, providing:
+
+- **PostgreSQL Database**: Store incidents, users, and app data
+- **Authentication**: User sign-up, login, and session management
+- **Row Level Security (RLS)**: Secure data access policies
+- **Storage**: File uploads for incident photos
+- **Real-time**: Live updates across devices
+
+## Creating a Supabase Project
+
+<Steps>
+  <Step title="Sign up for Supabase">
+    Visit [supabase.com](https://supabase.com) and create a free account.
+  </Step>
+
+  <Step title="Create new project">
+    Click "New Project" and provide:
+    
+    - **Name**: `incidents-app` (or your preferred name)
+    - **Database Password**: Strong password (save this securely)
+    - **Region**: Choose closest to your users
+    - **Pricing Plan**: Free tier is sufficient for development
+  </Step>
+
+  <Step title="Wait for provisioning">
+    Supabase will provision your database. This takes 1-2 minutes.
+  </Step>
+
+  <Step title="Copy credentials">
+    Once ready, go to **Settings** → **API** and copy:
+    
+    - **Project URL**: `https://[project-id].supabase.co`
+    - **anon public key**: Your client-side API key
+    
+    See [Environment Variables](/deployment/environment-variables) to configure these.
+  </Step>
+</Steps>
+
+<Info>
+The free tier includes 500MB database space, 1GB file storage, and 2GB bandwidth - suitable for development and small deployments.
+</Info>
+
+## Database Schema Setup
+
+The Incidents App requires specific database tables and relationships.
+
+### Creating Tables
+
+Navigate to **SQL Editor** in the Supabase dashboard and run the following schema:
+
+```sql Database Schema
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users profiles table
+CREATE TABLE profiles (
+  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  full_name TEXT,
+  avatar_url TEXT,
+  role TEXT DEFAULT 'user',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- Incidents table
+CREATE TABLE incidents (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT DEFAULT 'open',
+  priority TEXT DEFAULT 'medium',
+  category TEXT,
+  location TEXT,
+  reporter_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  assigned_to UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  resolved_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Incident attachments table
+CREATE TABLE incident_attachments (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  incident_id UUID REFERENCES incidents(id) ON DELETE CASCADE,
+  file_url TEXT NOT NULL,
+  file_type TEXT,
+  file_name TEXT,
+  uploaded_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- Comments table
+CREATE TABLE comments (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  incident_id UUID REFERENCES incidents(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- Create indexes for better performance
+CREATE INDEX incidents_reporter_id_idx ON incidents(reporter_id);
+CREATE INDEX incidents_assigned_to_idx ON incidents(assigned_to);
+CREATE INDEX incidents_status_idx ON incidents(status);
+CREATE INDEX comments_incident_id_idx ON comments(incident_id);
+CREATE INDEX incident_attachments_incident_id_idx ON incident_attachments(incident_id);
+```
+
+<Note>
+Run this SQL in the **SQL Editor** tab. Click "Run" to execute the schema.
+</Note>
+
+### Setting Up Row Level Security (RLS)
+
+Enable RLS to secure your data:
+
+```sql Row Level Security Policies
+-- Enable RLS on all tables
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE incident_attachments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+
+-- Profiles policies
+CREATE POLICY "Users can view all profiles"
+  ON profiles FOR SELECT
+  USING (true);
+
+CREATE POLICY "Users can update own profile"
+  ON profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+-- Incidents policies
+CREATE POLICY "Users can view all incidents"
+  ON incidents FOR SELECT
+  USING (true);
+
+CREATE POLICY "Authenticated users can create incidents"
+  ON incidents FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Users can update own incidents"
+  ON incidents FOR UPDATE
+  USING (reporter_id = auth.uid() OR assigned_to = auth.uid());
+
+-- Attachments policies
+CREATE POLICY "Users can view attachments for visible incidents"
+  ON incident_attachments FOR SELECT
+  USING (true);
+
+CREATE POLICY "Authenticated users can upload attachments"
+  ON incident_attachments FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+-- Comments policies
+CREATE POLICY "Users can view comments on visible incidents"
+  ON comments FOR SELECT
+  USING (true);
+
+CREATE POLICY "Authenticated users can create comments"
+  ON comments FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Users can update own comments"
+  ON comments FOR UPDATE
+  USING (user_id = auth.uid());
+```
+
+<Warning>
+RLS policies are critical for security. Never disable RLS in production without proper policies.
+</Warning>
+
+## Authentication Setup
+
+Configure authentication providers for user sign-up and login.
+
+### Email Authentication
+
+<Steps>
+  <Step title="Enable email provider">
+    Go to **Authentication** → **Providers** → **Email**
+    
+    Enable "Email" provider (enabled by default)
+  </Step>
+
+  <Step title="Configure email settings">
+    Under **Authentication** → **Email Templates**, customize:
+    
+    - Confirmation email
+    - Password reset email
+    - Magic link email (if using)
+  </Step>
+
+  <Step title="Set Site URL">
+    Under **Authentication** → **URL Configuration**, set:
+    
+    - **Site URL**: Your production web URL (e.g., `https://incidents.example.com`)
+    - **Redirect URLs**: Add mobile app deep link (`fluxomobile://`)
+  </Step>
+</Steps>
+
+### Social Authentication (Optional)
+
+Enable OAuth providers like Google, GitHub, or Apple:
+
+<Steps>
+  <Step title="Choose provider">
+    Go to **Authentication** → **Providers** and select a provider (e.g., Google)
+  </Step>
+
+  <Step title="Configure OAuth app">
+    Create an OAuth app in the provider's console:
+    
+    - **Google**: [console.cloud.google.com](https://console.cloud.google.com)
+    - **GitHub**: [github.com/settings/developers](https://github.com/settings/developers)
+    - **Apple**: [developer.apple.com](https://developer.apple.com)
+  </Step>
+
+  <Step title="Add credentials to Supabase">
+    Enter the OAuth Client ID and Secret in Supabase provider settings
+  </Step>
+
+  <Step title="Configure redirect URLs">
+    Add Supabase callback URL to your OAuth app:
+    
+    `https://[project-id].supabase.co/auth/v1/callback`
+  </Step>
+</Steps>
+
+## Storage Setup
+
+Configure storage buckets for incident photos and attachments.
+
+<Steps>
+  <Step title="Create storage bucket">
+    Go to **Storage** → **New bucket**
+    
+    - **Name**: `incident-attachments`
+    - **Public bucket**: Enable (for public incident photos)
+  </Step>
+
+  <Step title="Configure bucket policies">
+    Under **Policies** for the bucket, add:
+    
+    ```sql
+    -- Allow authenticated users to upload
+    CREATE POLICY "Authenticated users can upload"
+      ON storage.objects FOR INSERT
+      WITH CHECK (
+        bucket_id = 'incident-attachments' AND
+        auth.role() = 'authenticated'
+      );
+    
+    -- Allow public read access
+    CREATE POLICY "Public read access"
+      ON storage.objects FOR SELECT
+      USING (bucket_id = 'incident-attachments');
+    ```
+  </Step>
+
+  <Step title="Configure file size limits">
+    Set maximum file size in bucket settings (e.g., 10MB)
+  </Step>
+</Steps>
+
+<Info>
+For private attachments, create a separate bucket without public access and add user-specific policies.
+</Info>
+
+## Configuring Supabase Client
+
+The app clients are already configured to use Supabase:
+
+### Mobile Client
+
+```typescript mobile/src/services/supabase.ts
+import { createClient } from '@supabase/supabase-js'
+import * as SecureStore from 'expo-secure-store'
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string
+
+const ExpoSecureStoreAdapter = {
+  getItem: SecureStore.getItemAsync,
+  setItem: SecureStore.setItemAsync,
+  removeItem: SecureStore.deleteItemAsync
+}
+
+export const supabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
+    auth: {
+      storage: ExpoSecureStoreAdapter,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false
+    }
+  }
+)
+```
+
+**Key features**:
+- Uses **Expo SecureStore** for encrypted session storage
+- **Auto-refresh tokens** for seamless authentication
+- **Persistent sessions** across app restarts
+
+### Web Client
+
+```typescript web/lib/supabase.ts
+import { createBrowserClient } from "@supabase/ssr";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables");
+}
+
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+```
+
+**Key features**:
+- Uses **@supabase/ssr** for Next.js server-side rendering
+- **Cookie-based authentication** for server components
+- **Environment validation** with clear error messages
+
+## Database Functions and Triggers
+
+Add useful database functions for the app:
+
+```sql Database Functions
+-- Function to automatically update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply trigger to tables
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_incidents_updated_at
+  BEFORE UPDATE ON incidents
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_comments_updated_at
+  BEFORE UPDATE ON comments
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Function to create profile on user signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    NEW.raw_user_meta_data->>'full_name'
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to create profile on signup
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+```
+
+## Real-time Subscriptions
+
+Enable real-time for live updates:
+
+<Steps>
+  <Step title="Enable realtime for tables">
+    Go to **Database** → **Replication** and enable realtime for:
+    
+    - `incidents`
+    - `comments`
+    - `incident_attachments`
+  </Step>
+
+  <Step title="Subscribe in your app">
+    ```typescript
+    // Subscribe to incident changes
+    const subscription = supabase
+      .channel('incidents-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'incidents'
+        },
+        (payload) => {
+          console.log('Incident changed:', payload)
+          // Update UI
+        }
+      )
+      .subscribe()
+    ```
+  </Step>
+</Steps>
+
+## Database Backups
+
+Supabase provides automatic backups:
+
+- **Free tier**: Daily backups (7-day retention)
+- **Pro tier**: Daily backups (30-day retention) + point-in-time recovery
+
+### Manual Backup
+
+Export your database manually:
+
+<Steps>
+  <Step title="Open SQL Editor">
+    Navigate to **SQL Editor** in Supabase dashboard
+  </Step>
+
+  <Step title="Export schema">
+    ```bash
+    pg_dump -h [host] -U postgres -s [database] > schema.sql
+    ```
+  </Step>
+
+  <Step title="Export data">
+    Use Supabase CLI or export from Table Editor
+  </Step>
+</Steps>
+
+## Security Best Practices
+
+<Check>Enable RLS on all tables with proper policies</Check>
+<Check>Use `anon` key in client apps, never `service_role`</Check>
+<Check>Validate user input in database functions</Check>
+<Check>Enable email confirmation for new signups</Check>
+<Check>Set strong database password</Check>
+<Check>Configure CORS only for your domains</Check>
+<Check>Regular backups for production data</Check>
+
+### API Rate Limiting
+
+Configure rate limits in **Settings** → **API**:
+
+- **Anonymous requests**: 50 req/min (free tier)
+- **Authenticated requests**: 200 req/min (free tier)
+
+## Monitoring and Logs
+
+Monitor your Supabase project:
+
+### Database Usage
+
+Go to **Settings** → **Usage** to view:
+- Database size
+- Bandwidth usage
+- Storage usage
+- API requests
+
+### API Logs
+
+View real-time logs in **Logs** → **API Logs**:
+- SQL queries
+- Authentication attempts
+- Error messages
+
+### Database Performance
+
+Check query performance in **Database** → **Query Performance**:
+- Slow queries
+- Index suggestions
+- Connection pooling stats
+
+## Troubleshooting
+
+### Connection Issues
+
+**"Invalid API key" error**:
+- Verify `SUPABASE_ANON_KEY` is correct
+- Check API key hasn't been rotated
+- Ensure no extra whitespace in environment variables
+
+**"Failed to fetch" error**:
+- Check `SUPABASE_URL` format is correct
+- Verify internet connectivity
+- Check CORS settings in Supabase dashboard
+
+### RLS Policy Issues
+
+**"Row-level security policy violated" error**:
+- Review RLS policies for the affected table
+- Ensure user is authenticated: `auth.uid()` returns value
+- Check policy conditions match your query
+
+**Tip**: Temporarily disable RLS to test if policies are the issue:
+```sql
+ALTER TABLE incidents DISABLE ROW LEVEL SECURITY;
+-- Test query
+ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
+```
+
+### Database Performance
+
+**Slow queries**:
+- Add indexes on frequently queried columns
+- Use `EXPLAIN ANALYZE` to identify bottlenecks
+- Limit result sets with pagination
+
+## Migration to Production
+
+When moving to production:
+
+<Steps>
+  <Step title="Upgrade to Pro plan">
+    Consider upgrading for:
+    - Daily backups with 30-day retention
+    - Point-in-time recovery
+    - Increased rate limits
+    - Better performance
+  </Step>
+
+  <Step title="Configure custom domain">
+    Set up custom domain for your API endpoint
+  </Step>
+
+  <Step title="Enable connection pooling">
+    For high-traffic apps, enable connection pooling
+  </Step>
+
+  <Step title="Set up monitoring">
+    Configure alerts for:
+    - Database size approaching limit
+    - High error rates
+    - Slow query performance
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="key" href="/deployment/environment-variables">
+    Configure Supabase credentials in your apps
+  </Card>
+  
+  <Card title="Mobile Deployment" icon="mobile" href="/deployment/mobile">
+    Deploy mobile app with Supabase integration
+  </Card>
+  
+  <Card title="Web Deployment" icon="globe" href="/deployment/web">
+    Deploy web dashboard with Supabase backend
+  </Card>
+</CardGroup>

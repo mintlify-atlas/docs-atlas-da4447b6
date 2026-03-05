@@ -1,0 +1,462 @@
+---
+title: "Incident Management"
+description: "Manage hotel incidents through the web dashboard interface"
+---
+
+## Overview
+
+The incident management interface provides administrators with comprehensive tools to view, filter, assign, and resolve incidents across the property. Built as a client-side interactive page, it offers real-time data management.
+
+## Accessing Incident Management
+
+Navigate to the incidents page from the dashboard sidebar:
+
+```
+/dashboard/incidents
+```
+
+This route is protected by authentication middleware and requires admin privileges.
+
+## Features
+
+<CardGroup cols={2}>
+  <Card title="View All Incidents" icon="list">
+    Comprehensive table with all incident details
+  </Card>
+  <Card title="Filter & Search" icon="filter">
+    Find specific incidents quickly
+  </Card>
+  <Card title="Assign Staff" icon="user-plus">
+    Assign incidents to appropriate employees
+  </Card>
+  <Card title="Update Status" icon="rotate">
+    Change incident status and priority
+  </Card>
+</CardGroup>
+
+## Incident Table
+
+The main interface displays incidents in an interactive data table:
+
+### Columns
+
+| Column | Description | Actions |
+|--------|-------------|----------|
+| **Title** | Incident description | Click to view details |
+| **Status** | Current workflow status | Update via edit sheet |
+| **Priority** | Urgency level (baja/media/alta) | Color-coded badge |
+| **Area** | Department/category | Filter by area |
+| **Room** | Room code | Link to room details |
+| **Assigned To** | Staff member | Reassign via dropdown |
+| **Created** | Timestamp | Sort chronologically |
+| **Actions** | Menu | Edit, delete, resolve |
+
+### Implementation
+
+The incidents page is a client component that fetches data on mount:
+
+```typescript app/(dashboard)/dashboard/incidents/page.tsx
+'use client'
+
+import * as React from "react";
+import { supabase } from "@/lib/supabase";
+import { DataTable } from "@/components/data-table";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+
+export default function IncidentsCRUDPage() {
+    const [incidents, setIncidents] = React.useState<any[]>([]);
+    const [loading, setLoading] = React.useState(true);
+
+    const fetchIncidents = React.useCallback(async () => {
+        setLoading(true);
+        const { data, error } = await supabase
+            .from("incidents")
+            .select(`
+                *,
+                area:areas(id, name),
+                room:rooms(id, room_code),
+                assignee:profiles!incidents_assigned_to_fkey(id, full_name, email)
+            `)
+            .order("created_at", { ascending: false });
+
+        if (data) setIncidents(data);
+        setLoading(false);
+    }, []);
+
+    React.useEffect(() => {
+        fetchIncidents();
+    }, [fetchIncidents]);
+
+    return (
+        <div className="p-6">
+            <div className="mb-6 flex items-center justify-between">
+                <h1 className="text-3xl font-bold">Incidents</h1>
+                <Button onClick={() => setCreateOpen(true)}>
+                    New Incident
+                </Button>
+            </div>
+            <DataTable data={incidents} loading={loading} />
+        </div>
+    );
+}
+```
+
+## Status Management
+
+Incidents follow a defined workflow:
+
+<Steps>
+  <Step title="Pendiente (Pending)">
+    Initial state when guest or staff creates an incident
+    
+    **Color**: Yellow badge  
+    **Actions**: Assign to staff, update priority
+  </Step>
+
+  <Step title="Recibida (Received)">
+    Staff member has viewed the incident
+    
+    **Color**: Blue badge  
+    **Actions**: Accept and move to in progress
+  </Step>
+
+  <Step title="En Progreso (In Progress)">
+    Staff is actively working on the incident
+    
+    **Color**: Orange badge  
+    **Actions**: Add notes, update progress, resolve
+  </Step>
+
+  <Step title="Resuelta (Resolved)">
+    Incident has been completed
+    
+    **Color**: Green badge  
+    **Actions**: Reopen if needed
+  </Step>
+</Steps>
+
+### Updating Status
+
+Admins can manually change incident status:
+
+```typescript
+async function updateIncidentStatus(incidentId: string, newStatus: string) {
+  const { error } = await supabase
+    .from('incidents')
+    .update({ 
+      status: newStatus,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', incidentId);
+
+  if (error) {
+    console.error('Error updating status:', error);
+    return false;
+  }
+
+  // Refresh incident list
+  fetchIncidents();
+  return true;
+}
+```
+
+## Priority Levels
+
+Three priority levels determine urgency:
+
+### Baja (Low)
+- **Color**: Green
+- **Use Case**: Minor issues, non-urgent requests
+- **Examples**: Extra towels, light bulb replacement
+- **SLA**: 24 hours
+
+### Media (Medium)
+- **Color**: Yellow/Orange
+- **Use Case**: Standard maintenance issues
+- **Examples**: TV not working, slow drain
+- **SLA**: 4-6 hours
+
+### Alta (High)
+- **Color**: Red
+- **Use Case**: Urgent issues affecting guest comfort
+- **Examples**: No AC, water leak, safety concerns
+- **SLA**: 1 hour
+
+### Updating Priority
+
+```typescript
+async function updateIncidentPriority(incidentId: string, priority: 'baja' | 'media' | 'alta') {
+  const { error } = await supabase
+    .from('incidents')
+    .update({ priority })
+    .eq('id', incidentId);
+
+  if (!error) {
+    // Optionally notify assigned staff of priority change
+    await sendPriorityChangeNotification(incidentId, priority);
+  }
+}
+```
+
+## Assigning Incidents
+
+Admins can assign incidents to specific employees:
+
+### Assignment Logic
+
+1. **Area-Based**: Incidents are typically assigned to employees in the matching area
+2. **Workload Balancing**: Consider employee current task count
+3. **Skill-Based**: Some incidents require specific expertise
+4. **Location**: Assign to staff closest to the room
+
+### Implementation
+
+```typescript
+async function assignIncident(incidentId: string, employeeId: string) {
+  const { error } = await supabase
+    .from('incidents')
+    .update({ 
+      assigned_to: employeeId,
+      status: 'recibida',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', incidentId);
+
+  if (!error) {
+    // Send push notification to assigned employee
+    await sendAssignmentNotification(employeeId, incidentId);
+  }
+}
+```
+
+### Bulk Assignment
+
+Assign multiple incidents to one employee:
+
+```typescript
+async function bulkAssign(incidentIds: string[], employeeId: string) {
+  const { error } = await supabase
+    .from('incidents')
+    .update({ 
+      assigned_to: employeeId,
+      status: 'recibida'
+    })
+    .in('id', incidentIds);
+
+  return !error;
+}
+```
+
+## Filtering and Search
+
+The dashboard provides multiple ways to filter incidents:
+
+### By Status
+
+```typescript
+const { data } = await supabase
+  .from('incidents')
+  .select('*')
+  .eq('status', 'pendiente');
+```
+
+### By Priority
+
+```typescript
+const { data } = await supabase
+  .from('incidents')
+  .select('*')
+  .eq('priority', 'alta');
+```
+
+### By Area
+
+```typescript
+const { data } = await supabase
+  .from('incidents')
+  .select('*, area:areas(name)')
+  .eq('area_id', areaId);
+```
+
+### By Room
+
+```typescript
+const { data } = await supabase
+  .from('incidents')
+  .select('*, room:rooms(room_code)')
+  .eq('room_id', roomId);
+```
+
+### Full-Text Search
+
+```typescript
+const { data } = await supabase
+  .from('incidents')
+  .select('*')
+  .or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+```
+
+## Edit Incident Sheet
+
+The edit interface appears in a side sheet when clicking on an incident:
+
+### Editable Fields
+
+- **Title**: Incident summary
+- **Description**: Detailed description
+- **Priority**: Low, Medium, High
+- **Status**: Current workflow status
+- **Area**: Department category
+- **Assigned To**: Staff member
+- **Room**: Location (if applicable)
+
+### Sheet Component
+
+```typescript
+import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
+
+function EditIncidentSheet({ incident, open, onClose }) {
+  const [formData, setFormData] = React.useState(incident);
+
+  async function handleSubmit() {
+    const { error } = await supabase
+      .from('incidents')
+      .update(formData)
+      .eq('id', incident.id);
+
+    if (!error) {
+      onClose();
+      fetchIncidents(); // Refresh list
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onClose}>
+      <SheetContent>
+        <SheetHeader>
+          <h2>Edit Incident</h2>
+        </SheetHeader>
+        {/* Form fields */}
+      </SheetContent>
+    </Sheet>
+  );
+}
+```
+
+## Deleting Incidents
+
+<Warning>
+  Deleting incidents permanently removes them from the database. This action cannot be undone.
+</Warning>
+
+### Soft Delete (Recommended)
+
+Instead of hard deletion, mark incidents as archived:
+
+```typescript
+async function archiveIncident(incidentId: string) {
+  const { error } = await supabase
+    .from('incidents')
+    .update({ 
+      archived: true,
+      archived_at: new Date().toISOString()
+    })
+    .eq('id', incidentId);
+
+  return !error;
+}
+```
+
+### Hard Delete
+
+Permanently remove an incident:
+
+```typescript
+async function deleteIncident(incidentId: string) {
+  const { error } = await supabase
+    .from('incidents')
+    .delete()
+    .eq('id', incidentId);
+
+  return !error;
+}
+```
+
+## Bulk Operations
+
+Perform actions on multiple incidents:
+
+### Bulk Status Update
+
+```typescript
+async function bulkUpdateStatus(incidentIds: string[], newStatus: string) {
+  const { error } = await supabase
+    .from('incidents')
+    .update({ status: newStatus })
+    .in('id', incidentIds);
+
+  return !error;
+}
+```
+
+### Bulk Delete
+
+```typescript
+async function bulkDelete(incidentIds: string[]) {
+  const { error } = await supabase
+    .from('incidents')
+    .delete()
+    .in('id', incidentIds);
+
+  return !error;
+}
+```
+
+## Export Incidents
+
+Export incident data for reporting:
+
+```typescript
+function exportIncidentsToCSV(incidents: any[]) {
+  const headers = ['Title', 'Status', 'Priority', 'Area', 'Room', 'Assigned To', 'Created'];
+  const rows = incidents.map(inc => [
+    inc.title,
+    inc.status,
+    inc.priority,
+    inc.area?.name || '',
+    inc.room?.room_code || '',
+    inc.assignee?.full_name || '',
+    new Date(inc.created_at).toLocaleDateString()
+  ]);
+
+  const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `incidents-${new Date().toISOString()}.csv`;
+  link.click();
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users" href="/web/user-management">
+    Manage employee accounts and permissions
+  </Card>
+  <Card title="Analytics" icon="chart-line" href="/web/analytics">
+    View incident metrics and trends
+  </Card>
+  <Card title="Database Schema" icon="database" href="/api/incidents">
+    Learn about the incidents table structure
+  </Card>
+  <Card title="Mobile App" icon="mobile" href="/mobile/overview">
+    See how staff interact with incidents on mobile
+  </Card>
+</CardGroup>

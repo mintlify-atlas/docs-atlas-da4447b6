@@ -1,0 +1,383 @@
+---
+title: 'Web Dashboard Deployment'
+description: 'Deploy the Next.js web dashboard to production'
+---
+
+## Overview
+
+The Incidents web dashboard is built with Next.js 16 and can be deployed to various hosting platforms. This guide covers deployment to Vercel, the recommended platform for Next.js applications.
+
+## Prerequisites
+
+- Node.js 20+ installed
+- Git repository for your project
+- Vercel account (or alternative hosting platform)
+- Supabase project configured
+
+## Local Development
+
+<Steps>
+  <Step title="Navigate to web directory">
+    ```bash
+    cd web
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Create a `.env.local` file in the `web` directory:
+    
+    ```bash .env.local
+    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+    ```
+    
+    <Warning>
+    Never commit `.env.local` to version control. It's already in `.gitignore`.
+    </Warning>
+  </Step>
+
+  <Step title="Start development server">
+    ```bash
+    npm run dev
+    ```
+    
+    Open [http://localhost:3000](http://localhost:3000) in your browser.
+  </Step>
+</Steps>
+
+## Building for Production
+
+Test the production build locally before deploying:
+
+<CodeGroup>
+```bash Build
+npm run build
+```
+
+```bash Start Production Server
+npm start
+```
+
+```bash Lint Code
+npm run lint
+```
+</CodeGroup>
+
+<Info>
+The build process compiles TypeScript, optimizes assets, and generates static pages where possible.
+</Info>
+
+## Deploying to Vercel
+
+Vercel provides zero-configuration deployment for Next.js apps.
+
+### Method 1: Deploy with Vercel CLI
+
+<Steps>
+  <Step title="Install Vercel CLI">
+    ```bash
+    npm install -g vercel
+    ```
+  </Step>
+
+  <Step title="Login to Vercel">
+    ```bash
+    vercel login
+    ```
+  </Step>
+
+  <Step title="Deploy">
+    From the `web` directory:
+    
+    ```bash
+    vercel
+    ```
+    
+    Follow the prompts to configure your project.
+  </Step>
+
+  <Step title="Deploy to production">
+    ```bash
+    vercel --prod
+    ```
+  </Step>
+</Steps>
+
+### Method 2: Deploy with GitHub Integration
+
+<Steps>
+  <Step title="Push to GitHub">
+    Ensure your code is pushed to a GitHub repository.
+  </Step>
+
+  <Step title="Import to Vercel">
+    1. Visit [vercel.com/new](https://vercel.com/new)
+    2. Import your GitHub repository
+    3. Configure project settings
+  </Step>
+
+  <Step title="Configure build settings">
+    Vercel auto-detects Next.js projects. Set the root directory to `web` if needed:
+    
+    - **Framework Preset**: Next.js
+    - **Root Directory**: `web`
+    - **Build Command**: `npm run build`
+    - **Output Directory**: `.next`
+  </Step>
+
+  <Step title="Add environment variables">
+    In Vercel project settings, add:
+    
+    - `NEXT_PUBLIC_SUPABASE_URL`
+    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+    
+    See [Environment Variables](/deployment/environment-variables) for details.
+  </Step>
+
+  <Step title="Deploy">
+    Click "Deploy" and Vercel will build and deploy your app.
+  </Step>
+</Steps>
+
+<Info>
+With GitHub integration, Vercel automatically deploys on every push to your main branch.
+</Info>
+
+## Alternative Hosting Platforms
+
+### Netlify
+
+<Steps>
+  <Step title="Create netlify.toml">
+    ```toml web/netlify.toml
+    [build]
+      command = "npm run build"
+      publish = ".next"
+    
+    [[plugins]]
+      package = "@netlify/plugin-nextjs"
+    ```
+  </Step>
+
+  <Step title="Connect repository">
+    Import your repository in the Netlify dashboard.
+  </Step>
+
+  <Step title="Configure environment variables">
+    Add Supabase environment variables in Netlify settings.
+  </Step>
+</Steps>
+
+### Self-Hosted with Docker
+
+Create a `Dockerfile` in the `web` directory:
+
+```dockerfile web/Dockerfile
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+
+ENV PORT 3000
+
+CMD ["node", "server.js"]
+```
+
+Build and run:
+
+```bash
+docker build -t incidents-web .
+docker run -p 3000:3000 -e NEXT_PUBLIC_SUPABASE_URL=your_url incidents-web
+```
+
+<Note>
+For Docker deployment, enable standalone output in `next.config.ts`:
+
+```typescript
+const nextConfig = {
+  output: 'standalone',
+};
+```
+</Note>
+
+## Environment Configuration
+
+The web app uses environment variables for configuration. All client-side variables must be prefixed with `NEXT_PUBLIC_`.
+
+### Required Variables
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### Client vs Server Variables
+
+<CodeGroup>
+```typescript Client-side (lib/supabase.ts)
+import { createBrowserClient } from "@supabase/ssr";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+```
+
+```typescript Server-side (lib/supabase-server.ts)
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
+}
+```
+</CodeGroup>
+
+## Performance Optimization
+
+### Enable Caching
+
+Configure caching headers for static assets:
+
+```typescript next.config.ts
+const nextConfig = {
+  async headers() {
+    return [
+      {
+        source: '/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+### Image Optimization
+
+Next.js automatically optimizes images. Configure external image domains:
+
+```typescript next.config.ts
+const nextConfig = {
+  images: {
+    domains: ['your-project.supabase.co'],
+  },
+};
+```
+
+## Monitoring and Analytics
+
+### Vercel Analytics
+
+Add Vercel Analytics to track performance:
+
+```bash
+npm install @vercel/analytics
+```
+
+```typescript app/layout.tsx
+import { Analytics } from '@vercel/analytics/react';
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        {children}
+        <Analytics />
+      </body>
+    </html>
+  );
+}
+```
+
+## Continuous Deployment
+
+With GitHub integration:
+
+1. **Production**: Pushes to `main` branch deploy to production
+2. **Preview**: Pull requests generate preview deployments
+3. **Rollback**: Easily rollback to previous deployments in Vercel dashboard
+
+### Branch Deployments
+
+Configure branch-specific environment variables:
+
+- `main` branch → Production environment
+- `staging` branch → Staging environment
+- Feature branches → Preview environments
+
+## Troubleshooting
+
+### Build Errors
+
+**Type errors during build**:
+```bash
+npm run lint
+```
+
+Fix TypeScript errors before deploying.
+
+**Missing environment variables**:
+```
+Error: Missing Supabase environment variables
+```
+
+Ensure all required variables are set in your hosting platform.
+
+### Runtime Errors
+
+**Supabase connection issues**:
+- Verify environment variables are correctly set
+- Check Supabase project is not paused
+- Ensure anon key has correct permissions
+
+**404 errors on refresh**:
+Next.js handles routing automatically. Ensure hosting platform supports Next.js rewrites.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="key" href="/deployment/environment-variables">
+    Configure all required environment variables
+  </Card>
+  
+  <Card title="Supabase Setup" icon="database" href="/deployment/supabase-setup">
+    Set up and configure your Supabase backend
+  </Card>
+</CardGroup>

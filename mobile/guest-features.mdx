@@ -1,0 +1,454 @@
+---
+title: 'Guest User Features'
+description: 'Complete guide to guest user functionality in the Incidents App'
+---
+
+## Overview
+
+Guest users are hotel guests who access the app by scanning a QR code provided at check-in. They can report and track incidents in their room without creating an account.
+
+<Info>
+  Guest sessions are temporary and expire after checkout. No authentication is required.
+</Info>
+
+## Accessing the App
+
+### QR Code Scanning
+
+Guests access the app through a secure QR code scanning flow:
+
+```typescript app/(guestScan)/scan.tsx
+export default function GuestScanScreen() {
+    const [scanning, setScanning] = useState(false);
+    const scanLock = useRef(false);
+
+    async function handleScan({ data }: { data: string }) {
+        if (scanLock.current) return;
+        scanLock.current = true;
+        
+        let accessCode;
+        try {
+            const parsed = JSON.parse(data);
+            accessCode = parsed.access_code;
+        } catch {
+            accessCode = data;
+        }
+
+        const { data: session, error } = await supabase
+            .from('guest_sessions')
+            .select('*')
+            .eq('access_code', accessCode)
+            .eq('active', true)
+            .single();
+
+        if (error || !session) {
+            Alert.alert('Código inválido', 'El código no es válido o ya expiró');
+            return;
+        }
+
+        // Check expiration
+        const now = new Date();
+        if (new Date(session.expires_at) < now) {
+            Alert.alert('Código expirado', 'Este código ya no es válido');
+            return;
+        }
+
+        await SecureStore.setItemAsync('guest_session', JSON.stringify(session));
+        router.replace('/(guest)/home');
+    }
+}
+```
+
+<Steps>
+  <Step title="Receive QR Code">
+    Hotel staff provides a QR code at check-in
+  </Step>
+  
+  <Step title="Scan Code">
+    Open the app and tap "Soy huésped" on the login screen
+  </Step>
+  
+  <Step title="Grant Camera Permission">
+    Allow camera access when prompted
+  </Step>
+  
+  <Step title="Align QR Code">
+    Point camera at QR code within the frame
+  </Step>
+  
+  <Step title="Automatic Login">
+    App validates the code and logs you in automatically
+  </Step>
+</Steps>
+
+## Home Screen
+
+The guest home screen provides two main tabs:
+
+```typescript app/(guest)/home.tsx
+export default function GuestHome() {
+  const [activeTab, setActiveTab] = useState<"crear" | "incidencias">("crear");
+
+  return (
+    <SafeAreaView style={styles.mainContainer}>
+      <View style={styles.header}>
+        <AppText style={styles.headerTitle}>Asistencia Huésped</AppText>
+        <TouchableOpacity onPress={handleSettingsPress}>
+          <UserCircle2 size={28} color="#09f" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.titleSection}>
+        <AppText style={styles.mainTitle}>Centro de Ayuda</AppText>
+        <AppText style={styles.currentViewLabel}>
+          {activeTab === "crear"
+            ? "Reportar incidencia"
+            : "Incidencias reportadas"}
+        </AppText>
+      </View>
+
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === "crear" && styles.activeTab]}
+          onPress={() => setActiveTab("crear")}
+        >
+          <AppText>Crear Incidencia</AppText>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === "incidencias" && styles.activeTab]}
+          onPress={() => setActiveTab("incidencias")}
+        >
+          <AppText>Mis Incidencias</AppText>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === "crear" ? <CreateIncidentForm /> : <MyIncidentsView />}
+    </SafeAreaView>
+  );
+}
+```
+
+## Creating Incidents
+
+### Incident Form
+
+Guests can report issues using a comprehensive form:
+
+```typescript components/CreateIncidentForm.tsx
+export const CreateIncidentForm = () => {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState<Priority | null>(null);
+  const [areaId, setAreaId] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !description.trim() || !priority || !areaId) {
+      Alert.alert("Error", "Completa todos los campos");
+      return;
+    }
+
+    const raw = await SecureStore.getItemAsync("guest_session");
+    const guestSession = JSON.parse(raw);
+
+    const { error } = await supabase.from("incidents").insert({
+      title,
+      description,
+      priority,
+      area_id: areaId,
+      room_id: guestSession.room_id,
+    });
+
+    if (error) throw error;
+
+    Alert.alert("Listo", "Incidencia enviada");
+    
+    // Reset form
+    setTitle("");
+    setDescription("");
+    setPriority(null);
+    setAreaId(null);
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.inputGroup}>
+        <AppText style={styles.label}>Título</AppText>
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Ej: Aire no enfría"
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <AppText style={styles.label}>Prioridad</AppText>
+        <TouchableOpacity onPress={() => setOpen(true)}>
+          {/* Priority selector */}
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.inputGroup}>
+        <AppText style={styles.label}>Tipo de Incidencia</AppText>
+        <TouchableOpacity onPress={() => setOpenArea(true)}>
+          {/* Area selector */}
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.inputGroup}>
+        <AppText style={styles.label}>Descripción</AppText>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={description}
+          onChangeText={setDescription}
+          multiline
+        />
+      </View>
+
+      <TouchableOpacity style={styles.button} onPress={handleSubmit}>
+        <AppText style={styles.buttonText}>Reportar Incidencia</AppText>
+      </TouchableOpacity>
+    </View>
+  );
+};
+```
+
+### Priority Levels
+
+<Tabs>
+  <Tab title="Baja">
+    **Low Priority** - Non-urgent issues
+    
+    - Minor inconveniences
+    - Cosmetic issues
+    - Non-essential amenities
+    
+    <Note>Response time: 24-48 hours</Note>
+  </Tab>
+  
+  <Tab title="Media">
+    **Medium Priority** - Important but not urgent
+    
+    - Comfort issues
+    - Partially functioning amenities
+    - Non-critical repairs
+    
+    <Note>Response time: 4-12 hours</Note>
+  </Tab>
+  
+  <Tab title="Alta">
+    **High Priority** - Urgent issues
+    
+    - Safety concerns
+    - Broken essential amenities
+    - Health hazards
+    
+    <Warning>Response time: 1-2 hours</Warning>
+  </Tab>
+</Tabs>
+
+### Incident Areas
+
+Guests can categorize incidents by area:
+
+- **Mantenimiento** - Maintenance issues
+- **Limpieza** - Housekeeping
+- **Recepción** - Front desk
+- **Cocina** - Kitchen/Food service
+- **Spa** - Spa services
+- **Otros** - Other
+
+## Viewing Incidents
+
+### My Incidents View
+
+Guests can track all their reported incidents:
+
+```typescript components/MyIncidentsView.tsx
+export const MyIncidentsView = () => {
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadIncidents = async () => {
+    const raw = await SecureStore.getItemAsync("guest_session");
+    const guestSession = JSON.parse(raw);
+
+    const { data, error } = await supabase
+      .from("incidents")
+      .select("id, title, description, priority, status, created_at, areas(name)")
+      .eq("room_id", guestSession.room_id)
+      .order("created_at", { ascending: false });
+
+    setIncidents((data || []) as unknown as Incident[]);
+    setLoading(false);
+  };
+
+  if (loading) {
+    return <IncidentSkeleton />;
+  }
+
+  if (incidents.length === 0) {
+    return (
+      <EmptyState
+        title="Todo está tranquilo"
+        message="No has reportado ninguna incidencia."
+      />
+    );
+  }
+
+  return (
+    <FlatList
+      data={incidents}
+      renderItem={({ item }) => <IncidentCard incident={item} />}
+      keyExtractor={(item) => item.id}
+    />
+  );
+};
+```
+
+### Incident Card
+
+Each incident displays:
+
+- **Title** - Brief description
+- **Priority badge** - Visual priority indicator
+- **Area** - Department handling the issue
+- **Description** - Full details
+- **Status** - Current state (pending, in_progress, resolved)
+- **Timestamp** - When it was reported
+
+## Settings
+
+Guest users have limited settings options:
+
+```typescript app/(guest)/settings.tsx
+export default function GuestSettingsScreen() {
+  const [guestName, setGuestName] = useState<string | null>(null);
+  const [roomNumber, setRoomNumber] = useState<string | null>(null);
+  
+  useEffect(() => {
+    const fetchGuestInfo = async () => {
+      const session = await SecureStore.getItemAsync("guest_session");
+      if (session) {
+        const sessionData = JSON.parse(session);
+        setGuestName(sessionData?.guest_name ?? "Huésped");
+        
+        const { data } = await supabase
+          .from("rooms")
+          .select("room_code")
+          .eq("id", sessionData.room_id)
+          .single();
+        
+        setRoomNumber(data?.room_code || "---");
+      }
+    };
+    fetchGuestInfo();
+  }, []);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ProfileSection
+        displayName={guestName}
+        roomNumber={roomNumber}
+      />
+
+      <AppText style={styles.sectionLabel}>Perfil</AppText>
+      <View style={styles.card}>
+        <SettingItem
+          icon={UserRoundPen}
+          title="Nombre"
+          value="No disponible"
+          disabled
+        />
+        <SettingItem
+          icon={Info}
+          title="Info. de Estadía"
+          value="Ver detalles"
+          onPress={handleShowStayInfo}
+        />
+      </View>
+
+      <AppText style={styles.sectionLabel}>Preferencias</AppText>
+      <View style={styles.card}>
+        <SettingItem
+          icon={Bell}
+          title="Notificaciones"
+          hasSwitch
+          switchValue={notifications}
+          onSwitchChange={handleNotificationToggle}
+        />
+        <SettingItem
+          icon={Palette}
+          title="Tema"
+          value={getThemeLabel()}
+          onPress={handleOpenThemeModal}
+        />
+      </View>
+
+      <AppText style={styles.sectionLabel}>Sesión</AppText>
+      <View style={styles.card}>
+        <SettingItem
+          icon={LogOut}
+          title="Cerrar sesión"
+          titleColor="#FF4D4D"
+          onPress={handleLogout}
+        />
+      </View>
+    </SafeAreaView>
+  );
+}
+```
+
+### Available Settings
+
+<CardGroup cols={2}>
+  <Card title="Stay Information" icon="info">
+    View room number and check-out date
+  </Card>
+  <Card title="Notifications" icon="bell">
+    Toggle incident update notifications
+  </Card>
+  <Card title="Theme" icon="palette">
+    Choose light, dark, or system theme
+  </Card>
+  <Card title="Language" icon="language">
+    Opens device language settings
+  </Card>
+</CardGroup>
+
+## Session Management
+
+### Logout
+
+Guests can manually log out:
+
+```typescript
+const handleLogout = () => {
+  executeWithDebounce(async () => {
+    await SecureStore.deleteItemAsync("guest_session");
+    await SecureStore.deleteItemAsync("guest_notifications");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    router.replace("/(auth)/login");
+  });
+};
+```
+
+### Automatic Expiration
+
+Sessions automatically expire based on checkout date:
+
+- Set during session creation by admin
+- Checked on app launch
+- User is redirected to login if expired
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Employee Features" icon="briefcase" href="/mobile/employee-features">
+    Learn about employee capabilities
+  </Card>
+  <Card title="Admin Features" icon="shield" href="/mobile/admin-features">
+    Explore admin functionality
+  </Card>
+</CardGroup>

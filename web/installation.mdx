@@ -1,0 +1,278 @@
+---
+title: "Web Dashboard Installation"
+description: "Set up the Next.js web dashboard for local development"
+---
+
+## Prerequisites
+
+Before installing the web dashboard, ensure you have:
+
+<CardGroup cols={2}>
+  <Card title="Node.js 20+" icon="node-js">
+    LTS version recommended for stability
+  </Card>
+  <Card title="pnpm or npm" icon="box">
+    Package manager (pnpm is recommended)
+  </Card>
+  <Card title="Supabase Project" icon="database">
+    Backend setup with database tables
+  </Card>
+  <Card title="Git" icon="git">
+    For cloning the repository
+  </Card>
+</CardGroup>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone the Repository">
+    First, clone the incidents-app repository:
+
+    ```bash
+    git clone https://github.com/tuerre/incidents-app.git
+    cd incidents-app/web
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install the project dependencies using your preferred package manager:
+
+    <CodeGroup>
+    ```bash pnpm
+    pnpm install
+    ```
+
+    ```bash npm
+    npm install
+    ```
+
+    ```bash yarn
+    yarn install
+    ```
+    </CodeGroup>
+
+    <Note>
+      The project uses pnpm by default. Check `pnpm-lock.yaml` in the repository.
+    </Note>
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    Create a `.env.local` file in the `web/` directory:
+
+    ```bash .env.local
+    # Supabase Configuration
+    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+    ```
+
+    <Warning>
+      Never commit `.env.local` to version control. Add it to `.gitignore`.
+    </Warning>
+
+    Get your Supabase credentials:
+    1. Go to your [Supabase Dashboard](https://app.supabase.com)
+    2. Select your project
+    3. Navigate to **Settings** → **API**
+    4. Copy the **Project URL** and **anon/public** key
+  </Step>
+
+  <Step title="Start Development Server">
+    Run the Next.js development server:
+
+    <CodeGroup>
+    ```bash pnpm
+    pnpm dev
+    ```
+
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+    </CodeGroup>
+
+    The dashboard will be available at `http://localhost:3000`
+  </Step>
+
+  <Step title="Verify Installation">
+    Open your browser and navigate to `http://localhost:3000`. You should see the landing page.
+
+    To access the dashboard:
+    1. You'll need admin credentials
+    2. The auth flow redirects unauthenticated users
+    3. Create an admin user in Supabase or use existing credentials
+  </Step>
+</Steps>
+
+## Project Structure
+
+After installation, you'll have this structure:
+
+```
+web/
+├── app/                      # Next.js App Router
+│   ├── (dashboard)/          # Dashboard route group
+│   │   └── dashboard/
+│   │       ├── page.tsx      # Main dashboard
+│   │       ├── layout.tsx    # Dashboard layout
+│   │       ├── incidents/    # Incident management
+│   │       ├── employees/    # User management
+│   │       ├── analytics/    # Analytics pages
+│   │       ├── areas/        # Area management
+│   │       ├── rooms/        # Room management
+│   │       └── sessions/     # Session management
+│   ├── layout.tsx           # Root layout
+│   ├── page.tsx             # Landing page
+│   ├── globals.css          # Global styles
+│   └── not-found.tsx        # 404 page
+├── components/               # React components
+│   ├── ui/                  # shadcn/ui components
+│   ├── app-sidebar.tsx      # Navigation sidebar
+│   ├── chart-area-interactive.tsx
+│   ├── data-table.tsx
+│   └── section-cards.tsx
+├── lib/                      # Utilities
+│   ├── supabase.ts          # Client-side Supabase
+│   ├── supabase-server.ts   # Server-side Supabase
+│   └── utils.ts             # Utility functions
+├── hooks/                    # Custom React hooks
+├── public/                   # Static assets
+├── middleware.ts             # Auth middleware
+├── components.json           # shadcn/ui config
+├── next.config.ts           # Next.js config
+├── package.json
+├── tsconfig.json
+└── tailwind.config.js       # Tailwind config
+```
+
+## Development Workflow
+
+### Hot Module Replacement
+
+Next.js provides fast refresh for instant feedback:
+
+- Edit any file in `app/` or `components/`
+- Changes appear instantly without losing state
+- TypeScript errors show in the browser
+
+### TypeScript
+
+The project uses TypeScript with strict mode:
+
+```bash
+# Type checking
+pnpm typecheck
+
+# Or with npm
+npm run typecheck
+```
+
+### Linting
+
+Run ESLint to check code quality:
+
+<CodeGroup>
+```bash pnpm
+pnpm lint
+```
+
+```bash npm
+npm run lint
+```
+</CodeGroup>
+
+### Building for Production
+
+Test a production build locally:
+
+<CodeGroup>
+```bash pnpm
+pnpm build
+pnpm start
+```
+
+```bash npm
+npm run build
+npm start
+```
+</CodeGroup>
+
+The production server runs on `http://localhost:3000`
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port 3000 already in use">
+    Change the port with the `-p` flag:
+
+    ```bash
+    pnpm dev -p 3001
+    ```
+
+    Or set the `PORT` environment variable:
+
+    ```bash
+    PORT=3001 pnpm dev
+    ```
+  </Accordion>
+
+  <Accordion title="Supabase connection errors">
+    Check your environment variables:
+
+    1. Verify `.env.local` exists in the `web/` directory
+    2. Confirm `NEXT_PUBLIC_SUPABASE_URL` is correct
+    3. Confirm `NEXT_PUBLIC_SUPABASE_ANON_KEY` is the **anon/public** key
+    4. Restart the dev server after changing env vars
+
+    <Warning>
+      Environment variables with `NEXT_PUBLIC_` prefix are exposed to the browser. Never use the `service_role` key here.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Module not found errors">
+    Clear caches and reinstall:
+
+    ```bash
+    rm -rf node_modules .next
+    pnpm install
+    pnpm dev
+    ```
+  </Accordion>
+
+  <Accordion title="Authentication redirect loop">
+    This happens when middleware and auth state are out of sync:
+
+    1. Clear browser cookies for `localhost:3000`
+    2. Clear Next.js cache: `rm -rf .next`
+    3. Verify middleware logic in `middleware.ts`
+    4. Check Supabase auth settings
+  </Accordion>
+
+  <Accordion title="Tailwind styles not applying">
+    Ensure Tailwind CSS is properly configured:
+
+    1. Check `tailwind.config.js` exists
+    2. Verify `@tailwind` directives in `globals.css`
+    3. Restart dev server
+    4. Clear browser cache
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/web/configuration">
+    Configure the dashboard settings
+  </Card>
+  <Card title="Analytics" icon="chart-line" href="/web/analytics">
+    Explore analytics features
+  </Card>
+  <Card title="User Management" icon="users" href="/web/user-management">
+    Manage employee accounts
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/web">
+    Deploy to production
+  </Card>
+</CardGroup>

@@ -1,0 +1,276 @@
+---
+title: "Authentication"
+description: "Authentication system implementation for mobile and web platforms"
+---
+
+## Overview
+
+The authentication system handles user sessions, role-based access control, and guest sessions across both mobile and web platforms.
+
+## Mobile Authentication Flow
+
+The mobile app implements a role-based authentication system with support for admin, employee (empleado), and guest users.
+
+### Session Check
+
+On app launch, the system checks for existing sessions and routes users accordingly.
+
+```typescript mobile/app/index.tsx
+const bootstrap = async () => {
+  const { data } = await supabase.auth.getSession();
+
+  if (data.session) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", data.session.user.id)
+      .single();
+
+    if (profile?.role === "admin") {
+      router.replace("/(admin)");
+      return;
+    }
+
+    if (profile?.role === "empleado") {
+      router.replace("/(empleado)");
+      return;
+    }
+
+    await supabase.auth.signOut();
+    router.replace("/(auth)/login");
+    return;
+  }
+
+  const guestSession = await SecureStore.getItemAsync("guest_session");
+
+  if (guestSession) {
+    router.replace("/(guest)/home");
+    return;
+  }
+
+  router.replace("/(auth)/login");
+};
+```
+
+### Authentication Methods
+
+#### Get Current Session
+
+```typescript
+const { data, error } = await supabase.auth.getSession();
+
+if (data.session) {
+  console.log('User ID:', data.session.user.id);
+  console.log('Email:', data.session.user.email);
+}
+```
+
+<ResponseField name="data" type="object">
+  <ResponseField name="session" type="Session | null">
+    <ResponseField name="user" type="User">
+      <ResponseField name="id" type="string">User unique identifier</ResponseField>
+      <ResponseField name="email" type="string">User email address</ResponseField>
+      <ResponseField name="role" type="string">Authentication role</ResponseField>
+    </ResponseField>
+    <ResponseField name="access_token" type="string">JWT access token</ResponseField>
+    <ResponseField name="refresh_token" type="string">Refresh token for session renewal</ResponseField>
+  </ResponseField>
+</ResponseField>
+
+#### Sign In
+
+```typescript
+const { data, error } = await supabase.auth.signInWithPassword({
+  email: 'user@example.com',
+  password: 'password123'
+});
+```
+
+<ParamField path="email" type="string" required>
+  User email address
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  User password
+</ParamField>
+
+#### Sign Out
+
+```typescript
+await supabase.auth.signOut();
+router.replace("/(auth)/login");
+```
+
+### Role-Based Access Control
+
+The app supports three user roles:
+
+<ParamField path="admin" type="string">
+  Administrator role with full system access. Routes to `/(admin)` layout.
+</ParamField>
+
+<ParamField path="empleado" type="string">
+  Employee role with limited access. Routes to `/(empleado)` layout.
+</ParamField>
+
+<ParamField path="guest" type="string">
+  Guest role for unauthenticated browsing. Uses SecureStore for session management instead of Supabase auth.
+</ParamField>
+
+### Guest Sessions
+
+Guest sessions are managed using Expo SecureStore:
+
+```typescript
+// Check for guest session
+const guestSession = await SecureStore.getItemAsync("guest_session");
+
+if (guestSession) {
+  router.replace("/(guest)/home");
+}
+
+// Create guest session
+await SecureStore.setItemAsync("guest_session", "true");
+
+// Clear guest session
+await SecureStore.deleteItemAsync("guest_session");
+```
+
+## Web Authentication Flow
+
+The web application uses Next.js middleware for lightweight authentication checks.
+
+### Middleware Authentication
+
+The middleware checks for Supabase authentication cookies before allowing access to protected routes.
+
+```typescript web/middleware.ts
+export function middleware(request: NextRequest) {
+    const { pathname } = request.nextUrl;
+
+    if (pathname.startsWith("/dashboard")) {
+        // Supabase persists the session in a cookie named "sb-<project>-auth-token"
+        const hasSession = Array.from(request.cookies.getAll()).some(
+            (c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token")
+        );
+
+        if (!hasSession) {
+            return NextResponse.redirect(new URL("/", request.url));
+        }
+    }
+
+    return NextResponse.next();
+}
+
+export const config = {
+    matcher: ["/dashboard/:path*"],
+};
+```
+
+<ParamField path="matcher" type="string[]">
+  Array of route patterns to apply middleware to. Protects all `/dashboard` routes and sub-routes.
+</ParamField>
+
+### Cookie-Based Authentication
+
+Supabase authentication tokens are stored in cookies with the naming pattern:
+
+```
+sb-<project-ref>-auth-token
+```
+
+<ResponseField name="cookie" type="object">
+  <ResponseField name="name" type="string">
+    Cookie name following pattern `sb-<project>-auth-token`
+  </ResponseField>
+  <ResponseField name="value" type="string">
+    Encrypted authentication token
+  </ResponseField>
+  <ResponseField name="httpOnly" type="boolean" default={true}>
+    Cookie is not accessible via JavaScript
+  </ResponseField>
+  <ResponseField name="secure" type="boolean" default={true}>
+    Cookie only sent over HTTPS
+  </ResponseField>
+</ResponseField>
+
+### Server-Side Authentication
+
+Full role validation happens server-side in protected pages:
+
+```typescript
+import { createClient } from '@/lib/supabase-server'
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    redirect('/');
+  }
+  
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+  
+  // Validate role and render accordingly
+}
+```
+
+## Profile Schema
+
+User profiles are stored in the `profiles` table:
+
+```typescript
+interface Profile {
+  id: string;           // Matches auth.users.id
+  role: 'admin' | 'empleado';  // User role
+  created_at: string;   // ISO timestamp
+  updated_at: string;   // ISO timestamp
+}
+```
+
+## Best Practices
+
+### Mobile
+
+- Always check for valid sessions on app launch
+- Validate user roles before routing
+- Sign out users with invalid or missing roles
+- Use SecureStore for guest session management
+- Clear guest sessions when users sign in
+
+### Web
+
+- Use middleware for initial authentication checks
+- Perform full role validation server-side
+- Read user data from cookies in server components
+- Redirect unauthenticated users to login page
+- Never trust client-side authentication alone
+
+## Error Handling
+
+```typescript
+// Mobile authentication with error handling
+try {
+  const { data, error } = await supabase.auth.getSession();
+  
+  if (error) {
+    console.error('Session error:', error);
+    router.replace('/(auth)/login');
+    return;
+  }
+  
+  if (!data.session) {
+    router.replace('/(auth)/login');
+    return;
+  }
+  
+  // Proceed with authenticated flow
+} catch (err) {
+  console.error('Authentication failed:', err);
+  router.replace('/(auth)/login');
+}
+```

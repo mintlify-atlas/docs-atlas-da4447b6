@@ -1,0 +1,641 @@
+---
+title: 'Admin User Features'
+description: 'Complete guide to administrator functionality in the Incidents App'
+---
+
+## Overview
+
+Administrators have full system access and management capabilities. They can create guest sessions, manage users, and oversee all incidents.
+
+<Warning>
+  Admin access provides powerful system controls. Only grant admin privileges to trusted personnel.
+</Warning>
+
+## Authentication
+
+Admins log in with the same interface as employees, but are routed to the admin panel:
+
+```typescript app/(auth)/login.tsx
+async function handleWorkerLogin() {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error || !data.user) {
+    Alert.alert("Error", error?.message || "Credenciales inválidas");
+    return;
+  }
+
+  // Get user role
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .single();
+
+  const role = profile?.role as UserRole;
+
+  if (role === "admin") {
+    router.replace("/(admin)");
+  } else if (role === "empleado") {
+    router.replace("/(empleado)");
+  } else {
+    Alert.alert("Acceso denegado");
+    await supabase.auth.signOut();
+  }
+}
+```
+
+### Route Protection
+
+Admin routes are protected with role verification:
+
+```typescript app/(admin)/_layout.tsx
+export default function AdminLayout() {
+    useEffect(() => {
+        const checkAdmin = async () => {
+            const { data } = await supabase.auth.getSession();
+            if (!data.session) {
+                router.replace('/(auth)/login');
+                return;
+            }
+            
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', data.session.user.id)
+                .single();
+                
+            if (profile?.role !== 'admin') {
+                router.replace('/(auth)/login');
+            }
+        };
+        checkAdmin();
+    }, []);
+    
+    return (
+        <NativeTabs>
+            <NativeTabs.Trigger name="createSessions">
+                <Label>Sessions</Label>
+                <Icon sf="clock.fill" />
+            </NativeTabs.Trigger>
+            <NativeTabs.Trigger name="users">
+                <Label>Users</Label>
+                <Icon sf="person.2.fill" />
+            </NativeTabs.Trigger>
+            <NativeTabs.Trigger name="settings">
+                <Label>Settings</Label>
+                <Icon sf="gearshape.fill" />
+            </NativeTabs.Trigger>
+        </NativeTabs>
+    );
+}
+```
+
+## Admin Dashboard
+
+Admins have a tabbed navigation interface:
+
+- **Sessions** - Create guest access QR codes
+- **Users** - Manage employee accounts
+- **Settings** - Admin profile settings
+
+## Creating Guest Sessions
+
+Admins can generate QR codes for guest access:
+
+```typescript app/(admin)/createSessions.tsx
+function generateAccessCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 8; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code.match(/.{1,4}/g)?.join("-") ?? code;
+}
+
+export default function CreateGuestSession() {
+    const [roomCode, setRoomCode] = useState("");
+    const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+    const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+    const [qrValue, setQrValue] = useState<string | null>(null);
+
+    async function handleCreateSession() {
+        if (!roomCode || !expiresAt) {
+            Alert.alert("Faltan datos", "Completa la habitación y la expiración");
+            return;
+        }
+
+        // Check if room exists, create if not
+        const { data: existingRoom } = await supabase
+            .from("rooms")
+            .select("id")
+            .eq("room_code", roomCode)
+            .single();
+
+        let roomId = existingRoom?.id;
+
+        if (!roomId) {
+            const { data: newRoom, error } = await supabase
+                .from("rooms")
+                .insert({ room_code: roomCode })
+                .select("id")
+                .single();
+
+            if (error) {
+                Alert.alert("Error", "No se pudo crear la habitación");
+                return;
+            }
+            roomId = newRoom.id;
+        }
+
+        // Generate access code
+        const accessCode = generateAccessCode();
+
+        // Create guest session
+        const { error } = await supabase.from("guest_sessions").insert({
+            room_id: roomId,
+            access_code: accessCode,
+            expires_at: expiresAt.toISOString(),
+            active: true,
+        });
+
+        if (error) {
+            Alert.alert("Error", "No se pudo crear la sesión");
+            return;
+        }
+
+        // Generate QR code data
+        setGeneratedCode(accessCode);
+        setQrValue(
+            JSON.stringify({
+                room_code: roomCode,
+                access_code: accessCode,
+            })
+        );
+    }
+
+    return (
+        <ScreenPattern title="Crear Sesión">
+            <ScrollView>
+                <AppText style={styles.sectionTitle}>Detalles de la estadía</AppText>
+
+                <View style={styles.card}>
+                    <View style={styles.inputGroup}>
+                        <AppText style={styles.label}>Habitación</AppText>
+                        <TextInput
+                            placeholder="Ej: A-203"
+                            value={roomCode}
+                            onChangeText={setRoomCode}
+                            autoCapitalize="characters"
+                            style={styles.input}
+                        />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <AppText style={styles.label}>Expiración</AppText>
+                        <TouchableOpacity onPress={() => setShowPicker(true)}>
+                            <AppText>
+                                {expiresAt
+                                    ? formatDateTime(expiresAt.toISOString())
+                                    : "Seleccionar fecha y hora"}
+                            </AppText>
+                        </TouchableOpacity>
+                    </View>
+
+                    {showPicker && (
+                        <DateTimePicker
+                            value={expiresAt ?? new Date()}
+                            mode="datetime"
+                            onChange={(_, date) => {
+                                setShowPicker(false);
+                                if (date) setExpiresAt(date);
+                            }}
+                        />
+                    )}
+                </View>
+
+                <TouchableOpacity
+                    style={styles.button}
+                    onPress={handleCreateSession}
+                >
+                    <AppText style={styles.buttonText}>Generar Código de Acceso</AppText>
+                </TouchableOpacity>
+
+                {generatedCode && qrValue && (
+                    <View style={styles.resultCard}>
+                        <AppText style={styles.resultLabel}>Código de Acceso</AppText>
+                        <AppText style={styles.resultCode}>{generatedCode}</AppText>
+
+                        <View style={styles.qrContainer}>
+                            <QRCode value={qrValue} size={180} />
+                        </View>
+
+                        <AppText style={styles.qrHint}>
+                            El huésped puede escanear este código para acceder a la app.
+                        </AppText>
+                    </View>
+                )}
+            </ScrollView>
+        </ScreenPattern>
+    );
+}
+```
+
+<Steps>
+  <Step title="Enter Room Number">
+    Type the room code (e.g., A-203, B-101)
+  </Step>
+  
+  <Step title="Set Expiration">
+    Select checkout date and time using date picker
+  </Step>
+  
+  <Step title="Generate Code">
+    Click "Generar Código de Acceso" to create session
+  </Step>
+  
+  <Step title="Display QR Code">
+    QR code and access code are generated automatically
+  </Step>
+  
+  <Step title="Provide to Guest">
+    Guest scans the QR code or manually enters the code
+  </Step>
+</Steps>
+
+### Access Code Format
+
+Access codes are 8 characters, formatted as `XXXX-XXXX`:
+
+- Uses alphanumeric characters (excludes confusing ones like 0, O, 1, I)
+- Automatically formatted with hyphen for readability
+- Unique and randomly generated
+- Linked to specific room and expiration date
+
+## User Management
+
+Admins can create, edit, and delete employee accounts:
+
+```typescript app/(admin)/users.tsx
+export default function UsersManagementScreen() {
+    const [users, setUsers] = useState<Profile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const fetchUsers = async () => {
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("*")
+            .neq("role", "guest")
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            Alert.alert("Error", "No se pudieron cargar los usuarios");
+            return;
+        }
+        setUsers(data || []);
+        setLoading(false);
+    };
+
+    const handleDeleteUser = (userId: string, userName: string) => {
+        Alert.alert(
+            "Eliminar Usuario",
+            `¿Estás seguro de que deseas eliminar a ${userName}?`,
+            [
+                { text: "Cancelar", style: "cancel" },
+                {
+                    text: "Eliminar",
+                    style: "destructive",
+                    onPress: async () => {
+                        const { error } = await supabase
+                            .from("profiles")
+                            .delete()
+                            .eq("id", userId);
+
+                        if (error) {
+                            Alert.alert("Error", "No se pudo eliminar el usuario.");
+                        } else {
+                            setUsers((prev) => prev.filter((u) => u.id !== userId));
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    const filteredUsers = users.filter(
+        (u) =>
+            u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            u.area?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return (
+        <ScreenPattern title="Usuarios">
+            <View style={styles.searchContainer}>
+                <Search size={20} color="#999" />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="Buscar por nombre, email o área..."
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
+            </View>
+
+            <FlashList
+                data={filteredUsers}
+                renderItem={({ item }) => (
+                    <View style={styles.userCard}>
+                        <View style={styles.userInfo}>
+                            <View style={styles.avatar}>
+                                <AppText style={styles.avatarText}>
+                                    {item.full_name?.charAt(0).toUpperCase() || "?"}
+                                </AppText>
+                            </View>
+                            <View>
+                                <AppText style={styles.userName}>
+                                    {item.full_name || "Sin nombre"}
+                                </AppText>
+                                <AppText style={styles.userEmail}>{item.email}</AppText>
+                                <View style={styles.badges}>
+                                    <View
+                                        style={[
+                                            styles.badge,
+                                            item.role === "admin"
+                                                ? styles.adminBadge
+                                                : styles.staffBadge,
+                                        ]}
+                                    >
+                                        <AppText style={styles.badgeText}>
+                                            {item.role === "empleado" ? "Empleado" : "Admin"}
+                                        </AppText>
+                                    </View>
+                                    {item.area && (
+                                        <View style={styles.areaBadge}>
+                                            <AppText>{item.area}</AppText>
+                                        </View>
+                                    )}
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={styles.actions}>
+                            <TouchableOpacity onPress={() => handleOpenEdit(item)}>
+                                <UserCog size={20} color="#666" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => handleDeleteUser(item.id, item.full_name)}
+                            >
+                                <Trash2 size={20} color="#FF3B30" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={fetchUsers} />
+                }
+            />
+
+            <TouchableOpacity style={styles.fab} onPress={handleOpenCreate}>
+                <Plus color="#FFF" size={26} />
+            </TouchableOpacity>
+        </ScreenPattern>
+    );
+}
+```
+
+### Create User
+
+```typescript components/settings/admin/CreateUserModal.tsx
+export const CreateUserModal = ({ onUserCreated }) => {
+    const [email, setEmail] = useState("");
+    const [fullName, setFullName] = useState("");
+    const [password, setPassword] = useState("");
+    const [role, setRole] = useState<"empleado" | "admin">("empleado");
+    const [area, setArea] = useState<string | null>(null);
+
+    const handleCreate = async () => {
+        if (!email || !password || !fullName) {
+            Alert.alert("Error", "Completa todos los campos");
+            return;
+        }
+
+        // Create auth user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    full_name: fullName,
+                },
+            },
+        });
+
+        if (authError) {
+            Alert.alert("Error", authError.message);
+            return;
+        }
+
+        // Create profile
+        const { error: profileError } = await supabase.from("profiles").insert({
+            id: authData.user?.id,
+            email,
+            full_name: fullName,
+            role,
+            area,
+        });
+
+        if (profileError) {
+            Alert.alert("Error", "No se pudo crear el perfil");
+            return;
+        }
+
+        Alert.alert("Éxito", "Usuario creado correctamente");
+        onUserCreated({
+            id: authData.user?.id,
+            email,
+            full_name: fullName,
+            role,
+            area,
+        });
+    };
+
+    return (
+        <ModalSheet visible={visible} onClose={onClose}>
+            <View style={styles.container}>
+                <AppText style={styles.title}>Crear Usuario</AppText>
+
+                <TextInput
+                    placeholder="Nombre completo"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    style={styles.input}
+                />
+
+                <TextInput
+                    placeholder="Email"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    style={styles.input}
+                />
+
+                <TextInput
+                    placeholder="Contraseña"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    style={styles.input}
+                />
+
+                <RolePicker value={role} onChange={setRole} />
+
+                {role === "empleado" && (
+                    <AreaPicker value={area} onChange={setArea} />
+                )}
+
+                <TouchableOpacity style={styles.button} onPress={handleCreate}>
+                    <AppText style={styles.buttonText}>Crear Usuario</AppText>
+                </TouchableOpacity>
+            </View>
+        </ModalSheet>
+    );
+};
+```
+
+### Edit User
+
+Admins can update user details:
+
+```typescript components/settings/admin/EditUserModal.tsx
+export const EditUserModal = ({ user, onUpdate }) => {
+    const [fullName, setFullName] = useState(user?.full_name || "");
+    const [role, setRole] = useState(user?.role || "empleado");
+    const [area, setArea] = useState(user?.area || null);
+
+    const handleUpdate = async () => {
+        const { error } = await supabase
+            .from("profiles")
+            .update({
+                full_name: fullName,
+                role,
+                area,
+            })
+            .eq("id", user.id);
+
+        if (error) {
+            Alert.alert("Error", "No se pudo actualizar el usuario");
+            return;
+        }
+
+        Alert.alert("Éxito", "Usuario actualizado correctamente");
+        onUpdate({ id: user.id, full_name: fullName, role, area });
+        onClose();
+    };
+
+    return (
+        <ModalSheet visible={visible} onClose={onClose}>
+            <View style={styles.container}>
+                <AppText style={styles.title}>Editar Usuario</AppText>
+
+                <TextInput
+                    placeholder="Nombre completo"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    style={styles.input}
+                />
+
+                <RolePicker value={role} onChange={setRole} />
+
+                {role === "empleado" && (
+                    <AreaPicker value={area} onChange={setArea} />
+                )}
+
+                <TouchableOpacity style={styles.button} onPress={handleUpdate}>
+                    <AppText style={styles.buttonText}>Guardar Cambios</AppText>
+                </TouchableOpacity>
+            </View>
+        </ModalSheet>
+    );
+};
+```
+
+### User Roles
+
+<Tabs>
+  <Tab title="Employee">
+    **Empleado** role provides:
+    
+    - View and claim incidents
+    - Update incident status
+    - Resolve assigned tasks
+    - Limited settings access
+    - Must be assigned to an area
+  </Tab>
+  
+  <Tab title="Admin">
+    **Admin** role provides:
+    
+    - All employee permissions
+    - Create guest sessions
+    - Manage all users
+    - View all incidents
+    - System configuration
+    - No area assignment required
+  </Tab>
+</Tabs>
+
+## Admin Settings
+
+Admin settings are similar to employee settings but with admin role:
+
+```typescript app/(admin)/settings.tsx
+export default function AdminSettingsScreen() {
+  // Similar to employee settings
+  // Includes profile, preferences, and security sections
+  
+  return (
+    <ScreenPattern title="Configuración">
+      <ScrollView>
+        <ProfileSection
+          displayName={displayName}
+          email={email}
+        />
+
+        {/* Profile, Preferences, and Security sections */}
+      </ScrollView>
+    </ScreenPattern>
+  );
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Session Management" icon="key">
+    Set appropriate expiration dates for guest sessions (typically checkout date + 1 day)
+  </Card>
+  <Card title="User Security" icon="lock">
+    Use strong passwords and limit admin role assignments
+  </Card>
+  <Card title="Regular Audits" icon="clipboard-check">
+    Review user list regularly and remove inactive accounts
+  </Card>
+  <Card title="Area Assignment" icon="building">
+    Assign employees to correct departments for efficient incident routing
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="book" href="/mobile/overview">
+    Review app architecture
+  </Card>
+  <Card title="Configuration" icon="gear" href="/mobile/configuration">
+    Explore configuration options
+  </Card>
+</CardGroup>

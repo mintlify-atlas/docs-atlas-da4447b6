@@ -1,0 +1,292 @@
+---
+title: 'CreateIncidentForm'
+description: 'Form component for creating and submitting new incidents with priority, area, and description fields'
+icon: 'file-lines'
+---
+
+## Overview
+
+The `CreateIncidentForm` component provides a complete incident creation interface for guest users. It includes form fields for title, description, priority selection, and area type with validation and submission handling.
+
+## Features
+
+- Multi-field incident form (title, description, priority, area)
+- Animated modal sheets for priority and area selection
+- Real-time area loading from Supabase
+- Guest session integration via SecureStore
+- Form validation and error handling
+- Loading states during submission
+
+## Usage
+
+```tsx
+import { CreateIncidentForm } from '@/components/CreateIncidentForm'
+
+export default function ReportScreen() {
+  return (
+    <View style={styles.container}>
+      <CreateIncidentForm />
+    </View>
+  )
+}
+```
+
+## Props
+
+This component does not accept any props. It manages all state internally.
+
+## Types
+
+### Priority
+
+```typescript
+type Priority = "baja" | "media" | "alta"
+```
+
+Defines the available priority levels for incidents:
+- **baja** - Low priority (green badge)
+- **media** - Medium priority (orange badge)
+- **alta** - High priority (red badge)
+
+### Area
+
+```typescript
+type Area = {
+  id: string
+  name: string
+}
+```
+
+Represents an area/department where incidents can be reported.
+
+## Internal State
+
+The component manages the following internal state:
+
+<ParamField path="title" type="string">
+  The incident title entered by the user
+</ParamField>
+
+<ParamField path="description" type="string">
+  Detailed description of the incident
+</ParamField>
+
+<ParamField path="priority" type="Priority | null">
+  Selected priority level (baja, media, or alta)
+</ParamField>
+
+<ParamField path="areaId" type="string | null">
+  ID of the selected area/department
+</ParamField>
+
+<ParamField path="areas" type="Area[]">
+  List of available areas loaded from the database
+</ParamField>
+
+<ParamField path="loading" type="boolean">
+  Indicates whether the form is submitting
+</ParamField>
+
+<ParamField path="open" type="boolean">
+  Controls visibility of the priority selection modal
+</ParamField>
+
+<ParamField path="openArea" type="boolean">
+  Controls visibility of the area selection modal
+</ParamField>
+
+## Methods
+
+### loadAreas()
+
+Fetches available areas from the Supabase `areas` table:
+
+```typescript
+const loadAreas = async () => {
+  const { data, error } = await supabase
+    .from("areas")
+    .select("id, name")
+    .order("name")
+
+  if (error) throw error
+  if (data) setAreas(data)
+}
+```
+
+Called automatically on component mount.
+
+### handleSubmit()
+
+Validates and submits the incident form:
+
+```typescript
+const handleSubmit = async () => {
+  // Validates all required fields
+  if (!title.trim() || !description.trim() || !priority || !areaId) {
+    Alert.alert("Error", "Completa todos los campos")
+    return
+  }
+
+  // Retrieves guest session from SecureStore
+  const raw = await SecureStore.getItemAsync("guest_session")
+  const guestSession = JSON.parse(raw)
+
+  // Inserts incident into database
+  const { error } = await supabase.from("incidents").insert({
+    title,
+    description,
+    priority,
+    area_id: areaId,
+    room_id: guestSession.room_id,
+  })
+
+  // Resets form on success
+  if (!error) {
+    setTitle("")
+    setDescription("")
+    setPriority(null)
+    setAreaId(null)
+  }
+}
+```
+
+## Form Fields
+
+### Title Input
+
+Single-line text input for the incident title:
+
+```tsx
+<TextInput
+  style={styles.input}
+  value={title}
+  onChangeText={setTitle}
+  placeholder="Ej: Aire no enfría"
+/>
+```
+
+### Priority Selector
+
+Opens a modal sheet with three priority options:
+
+```tsx
+<TouchableOpacity
+  style={styles.selectButton}
+  onPress={() => setOpen(true)}
+>
+  {/* Shows selected priority badge or placeholder */}
+</TouchableOpacity>
+```
+
+Priority options:
+- **Baja**: Green badge (#10B981, background #ECFDF5)
+- **Media**: Orange badge (#F59E0B, background #FEF3C7)
+- **Alta**: Red badge (#EF4444, background #FEE2E2)
+
+### Area Selector
+
+Opens a modal sheet with dynamically loaded areas:
+
+```tsx
+<TouchableOpacity
+  style={styles.selectButton}
+  onPress={() => setOpenArea(true)}
+>
+  {/* Shows selected area name or placeholder */}
+</TouchableOpacity>
+```
+
+### Description Input
+
+Multi-line text area for detailed incident description:
+
+```tsx
+<TextInput
+  style={[styles.input, styles.textArea]}
+  value={description}
+  onChangeText={setDescription}
+  multiline
+  returnKeyType="done"
+  blurOnSubmit={true}
+/>
+```
+
+## Dependencies
+
+- `@/components/settings/ModalSheet` - Animated bottom sheet for selections
+- `@/components/AppText` - Styled text component
+- `@/src/services/supabase` - Supabase client for data operations
+- `expo-secure-store` - Secure storage for guest session data
+- `lucide-react-native` - Icons (Check, ChevronDown)
+- `react-native` - Core UI components and animations
+
+## Database Requirements
+
+### Tables
+
+**areas**
+```sql
+- id: string (primary key)
+- name: string
+```
+
+**incidents**
+```sql
+- title: string
+- description: string
+- priority: string (baja | media | alta)
+- area_id: string (foreign key to areas)
+- room_id: string
+- created_at: timestamp
+```
+
+### SecureStore Data
+
+**guest_session**
+```json
+{
+  "room_id": "string",
+  "access_code": "string",
+  "expires_at": "ISO date string"
+}
+```
+
+## Example Integration
+
+```tsx
+import { CreateIncidentForm } from '@/components/CreateIncidentForm'
+import { ScrollView, StyleSheet } from 'react-native'
+
+export default function GuestReportScreen() {
+  return (
+    <ScrollView style={styles.screen}>
+      <CreateIncidentForm />
+    </ScrollView>
+  )
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    padding: 16,
+  },
+})
+```
+
+## Error Handling
+
+The component handles the following error cases:
+
+- **Missing fields**: Alert shown if any required field is empty
+- **No guest session**: Error thrown if SecureStore lacks guest_session
+- **Area loading failure**: Alert shown if areas cannot be fetched
+- **Submission failure**: Alert shown with error message from Supabase
+
+## Accessibility
+
+- Form dismisses keyboard when tapping outside inputs
+- Touch targets meet minimum size requirements (44x44 points)
+- Visual feedback on all interactive elements (opacity changes)
+- Clear placeholder text for all inputs
+- Loading state prevents double submissions

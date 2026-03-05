@@ -1,97 +1,128 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Welcome to Incidents App"
+description: "A comprehensive hotel incident management system with mobile app for guests and staff, and web dashboard for administrators"
 ---
 
-## Setting up
+## Streamline Hotel Operations
 
-Get your documentation site up and running in minutes.
+Incidents App provides a complete solution for managing hotel incidents and maintenance requests across your property. With role-based access for guests, staff, and administrators, everyone stays informed and operations run smoothly.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
   >
-    Edit your docs locally and preview them in real time.
+    Get started with Incidents App in minutes
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="Architecture"
+    icon="sitemap"
+    href="/architecture"
   >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+    Learn how the system works
   </Card>
   <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
+    title="Mobile App"
+    icon="mobile"
+    href="/mobile/overview"
   >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+    Deploy the React Native mobile app
   </Card>
   <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
+    title="Web Dashboard"
+    icon="chart-line"
+    href="/web/overview"
   >
-    Add sample code to demonstrate how to use your product.
+    Set up the admin web dashboard
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={3}>
+  <Card
+    title="QR Code Scanning"
+    icon="qrcode"
+    href="/features/qr-scanning"
+  >
+    Guests scan room QR codes to instantly report incidents
   </Card>
   <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
+    title="Role-Based Access"
+    icon="users"
+    href="/features/roles-permissions"
   >
-    Display images and other media.
+    Separate interfaces for guests, employees, and administrators
   </Card>
   <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
+    title="Real-Time Updates"
+    icon="bolt"
+    href="/features/real-time-updates"
   >
-    Write once and reuse across your docs.
+    Supabase-powered live incident tracking and notifications
   </Card>
-</Columns>
+  <Card
+    title="Priority Routing"
+    icon="flag"
+    href="/features/incident-tracking"
+  >
+    Incidents are categorized by priority and routed to the right team
+  </Card>
+  <Card
+    title="Push Notifications"
+    icon="bell"
+    href="/features/notifications"
+  >
+    Stay informed with instant incident status updates
+  </Card>
+  <Card
+    title="Analytics Dashboard"
+    icon="chart-bar"
+    href="/web/analytics"
+  >
+    Track metrics and optimize operations
+  </Card>
+</CardGroup>
 
-## Need inspiration?
+## Platform Overview
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+Incidents App consists of two main applications:
+
+<CardGroup cols={2}>
+  <Card
+    title="Mobile App (React Native + Expo)"
+    icon="mobile-screen"
+    href="/mobile/overview"
+  >
+    Cross-platform iOS and Android app for guests and staff to report and manage incidents on the go
+  </Card>
+  <Card
+    title="Web Dashboard (Next.js)"
+    icon="browser"
+    href="/web/overview"
+  >
+    Administrative dashboard for managing users, analyzing incidents, and overseeing operations
+  </Card>
+</CardGroup>
+
+## API Reference
+
+Explore the underlying architecture and component APIs:
+
+<CardGroup cols={2}>
+  <Card
+    title="Database Schema"
+    icon="database"
+    href="/api/database-overview"
+  >
+    Supabase tables and relationships
+  </Card>
+  <Card
+    title="Mobile Components"
+    icon="puzzle-piece"
+    href="/api/components/incident-form"
+  >
+    React Native component API reference
+  </Card>
+</CardGroup>

@@ -1,0 +1,237 @@
+---
+title: "Web Dashboard Overview"
+description: "Comprehensive administrative dashboard for managing hotel incidents, users, and analytics"
+---
+
+## Introduction
+
+The Incidents App web dashboard is a Next.js application that provides administrators with a complete interface for managing hotel operations. Built with Next.js 16 and React 19, it offers real-time analytics, user management, and incident oversight.
+
+## Technology Stack
+
+The web dashboard leverages modern web technologies:
+
+<CardGroup cols={2}>
+  <Card title="Next.js 16" icon="react">
+    App Router with server-side rendering and React Server Components
+  </Card>
+  <Card title="Supabase SSR" icon="database">
+    Server-side authentication and real-time data synchronization
+  </Card>
+  <Card title="Tailwind CSS 4" icon="palette">
+    Utility-first styling with custom design system
+  </Card>
+  <Card title="shadcn/ui" icon="puzzle-piece">
+    High-quality accessible component library
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Dashboard Analytics
+
+The main dashboard provides real-time insights into hotel operations:
+
+- **Incident Metrics**: Total, pending, in-progress, and resolved incident counts
+- **Trend Charts**: 90-day historical data showing created vs. resolved incidents
+- **Data Tables**: Complete incident list with filtering, sorting, and pagination
+- **Status Overview**: Visual indicators for operational health
+
+### User Management
+
+Comprehensive employee management system:
+
+- Create, edit, and delete employee accounts
+- Assign roles (employee vs. admin)
+- Configure area assignments for staff routing
+- Manage access permissions
+
+### Incident Management
+
+Full incident lifecycle management:
+
+- View all incidents across the property
+- Filter by status, priority, area, or room
+- Assign incidents to specific employees
+- Track resolution progress
+- Export reports
+
+### Session Management
+
+Guest check-in and QR code generation:
+
+- Create temporary guest sessions
+- Generate unique access codes
+- Generate QR codes for rooms
+- Manage session expiration
+
+## Architecture
+
+### App Router Structure
+
+The dashboard uses Next.js App Router with file-based routing:
+
+```
+app/
+├── (dashboard)/
+│   └── dashboard/
+│       ├── page.tsx          # Main analytics dashboard
+│       ├── layout.tsx        # Dashboard layout with sidebar
+│       ├── incidents/        # Incident management
+│       ├── employees/        # User management
+│       ├── analytics/        # Advanced analytics
+│       ├── areas/            # Area configuration
+│       ├── rooms/            # Room management
+│       └── sessions/         # Guest session management
+├── layout.tsx               # Root layout
+└── page.tsx                # Landing page
+```
+
+### Authentication Flow
+
+The dashboard implements secure authentication with middleware protection:
+
+```typescript middleware.ts
+import { NextRequest, NextResponse } from "next/server";
+
+export function middleware(request: NextRequest) {
+    const { pathname } = request.nextUrl;
+
+    if (pathname.startsWith("/dashboard")) {
+        // Check for Supabase auth cookie
+        const hasSession = Array.from(request.cookies.getAll()).some(
+            (c) => c.name.startsWith("sb-") && c.name.endsWith("-auth-token")
+        );
+
+        if (!hasSession) {
+            return NextResponse.redirect(new URL("/", request.url));
+        }
+    }
+
+    return NextResponse.next();
+}
+
+export const config = {
+    matcher: ["/dashboard/:path*"],
+};
+```
+
+### Data Fetching
+
+The dashboard uses React Server Components for efficient data fetching:
+
+```typescript page.tsx
+import { createClient } from "@/lib/supabase-server";
+
+export default async function DashboardPage() {
+    const supabase = await createClient();
+
+    // Server-side data fetching
+    const { count: totalIncidents } = await supabase
+        .from("incidents")
+        .select("*", { count: "exact", head: true });
+
+    const { data: incidents } = await supabase
+        .from("incidents")
+        .select(`
+            id,
+            title,
+            status,
+            priority,
+            area:areas(name),
+            room:rooms(room_code),
+            assignee:profiles!incidents_assigned_to_fkey(full_name)
+        `)
+        .order("created_at", { ascending: false });
+
+    return (
+        <div>
+            {/* Render components */}
+        </div>
+    );
+}
+```
+
+## Components
+
+The dashboard includes several custom components:
+
+### SectionCards
+
+Displays key metrics with visual indicators:
+
+- Total incidents count
+- Pending incidents (yellow badge)
+- In-progress incidents (blue badge)
+- Resolved incidents (green badge)
+
+### ChartAreaInteractive
+
+Interactive chart showing incident trends:
+
+- 90-day historical data
+- Created vs. resolved comparison
+- Hover tooltips with daily details
+- Responsive design
+
+### DataTable
+
+Full-featured data table powered by TanStack Table:
+
+- Sorting and filtering
+- Pagination
+- Column visibility controls
+- Export functionality
+- Row selection
+
+### AppSidebar
+
+Navigation sidebar with sections:
+
+- Dashboard overview
+- Incident management
+- User management
+- Analytics
+- Settings
+
+## Performance Optimizations
+
+<CardGroup cols={2}>
+  <Card title="Server Components" icon="server">
+    Data fetching happens on the server, reducing client-side JavaScript
+  </Card>
+  <Card title="Streaming" icon="bolt">
+    Progressive page rendering for faster perceived load times
+  </Card>
+  <Card title="Image Optimization" icon="image">
+    Next.js Image component for automatic optimization
+  </Card>
+  <Card title="Code Splitting" icon="scissors">
+    Automatic route-based code splitting
+  </Card>
+</CardGroup>
+
+## Security Features
+
+- **Middleware Protection**: All dashboard routes require authentication
+- **Row Level Security**: Database queries enforce user permissions
+- **CSRF Protection**: Built-in Next.js security features
+- **Secure Cookies**: HttpOnly cookies for session management
+- **Environment Variables**: Sensitive data stored securely
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/web/installation">
+    Set up the web dashboard locally
+  </Card>
+  <Card title="Configuration" icon="gear" href="/web/configuration">
+    Configure environment variables and settings
+  </Card>
+  <Card title="Analytics" icon="chart-line" href="/web/analytics">
+    Explore analytics features
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/web">
+    Deploy to production
+  </Card>
+</CardGroup>

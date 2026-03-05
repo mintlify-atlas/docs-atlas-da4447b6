@@ -1,0 +1,388 @@
+---
+title: 'Configuration Options'
+description: 'Configure and customize the Incidents App mobile application'
+---
+
+## App Configuration
+
+The main app configuration is managed through `app.json`:
+
+```json app.json
+{
+  "expo": {
+    "name": "incidents-app",
+    "slug": "incidents-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "fluxomobile",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true
+  }
+}
+```
+
+## Environment Variables
+
+The app uses environment variables for sensitive configuration:
+
+<CodeGroup>
+```bash .env (Development)
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+```bash .env.production (Production)
+EXPO_PUBLIC_SUPABASE_URL=https://your-prod-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-prod-anon-key
+```
+</CodeGroup>
+
+<Warning>
+  All public environment variables must be prefixed with `EXPO_PUBLIC_` to be accessible in the app.
+</Warning>
+
+## Supabase Configuration
+
+The Supabase client is configured in `src/services/supabase.ts`:
+
+```typescript src/services/supabase.ts
+import { createClient } from '@supabase/supabase-js'
+import * as SecureStore from 'expo-secure-store'
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string
+
+const ExpoSecureStoreAdapter = {
+    getItem: SecureStore.getItemAsync,
+    setItem: SecureStore.setItemAsync,
+    removeItem: SecureStore.deleteItemAsync
+}
+
+export const supabase = createClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+        auth: {
+            storage: ExpoSecureStoreAdapter,
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false
+        }
+    }
+)
+```
+
+### Key Configuration Options
+
+- **storage**: Uses Expo Secure Store for encrypted session storage
+- **persistSession**: Keeps users logged in across app restarts
+- **autoRefreshToken**: Automatically refreshes auth tokens
+- **detectSessionInUrl**: Disabled for mobile (deep linking not used for auth)
+
+## Platform-Specific Configuration
+
+<Tabs>
+  <Tab title="iOS">
+    iOS-specific settings in `app.json`:
+    
+    ```json
+    {
+      "ios": {
+        "supportsTablet": true,
+        "bundleIdentifier": "com.yourcompany.incidentsapp"
+      }
+    }
+    ```
+    
+    ### Build Properties
+    
+    ```json
+    {
+      "plugins": [
+        [
+          "expo-build-properties",
+          {
+            "ios": {
+              "useFrameworks": "static"
+            }
+          }
+        ]
+      ]
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Android">
+    Android-specific settings in `app.json`:
+    
+    ```json
+    {
+      "android": {
+        "adaptiveIcon": {
+          "backgroundColor": "#E6F4FE",
+          "foregroundImage": "./assets/images/android-icon-foreground.png",
+          "backgroundImage": "./assets/images/android-icon-background.png",
+          "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        },
+        "edgeToEdgeEnabled": true,
+        "predictiveBackGestureEnabled": false,
+        "package": "com.yourcompany.incidentsapp"
+      }
+    }
+    ```
+    
+    <Info>
+      `edgeToEdgeEnabled` allows content to draw behind system bars for a modern look.
+    </Info>
+  </Tab>
+</Tabs>
+
+## Theme Configuration
+
+Theme settings are managed through the custom `useTheme` hook:
+
+```typescript hooks/useTheme.ts
+export type ThemeMode = "light" | "dark" | "system";
+export type ActiveTheme = "light" | "dark";
+
+const THEME_KEY = "app_theme_preference";
+
+export const useTheme = () => {
+    const systemColorScheme = useSystemColorScheme();
+    const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+    
+    // Determine active theme based on user preference
+    const activeTheme: ActiveTheme =
+        themeMode === "system"
+            ? (systemColorScheme ?? "light")
+            : themeMode;
+    
+    const setTheme = async (mode: ThemeMode) => {
+        await SecureStore.setItemAsync(THEME_KEY, mode);
+        setThemeMode(mode);
+    };
+    
+    return { themeMode, activeTheme, setTheme, isLoading };
+};
+```
+
+### Theme Constants
+
+Define theme colors in `constants/theme.ts`:
+
+```typescript constants/theme.ts
+export const Colors = {
+  light: {
+    text: '#000',
+    background: '#F7FAFC',
+    card: '#FFFFFF',
+    primary: '#0099ff',
+    border: '#E2E8F0',
+  },
+  dark: {
+    text: '#FFFFFF',
+    background: '#0B0B0B',
+    card: '#1A1A1A',
+    primary: '#0099ff',
+    border: '#2D3748',
+  },
+};
+```
+
+## Notification Configuration
+
+Notification preferences are managed per user role:
+
+```typescript hooks/settings/use-notifications.ts
+export const useNotifications = (storageKey: string) => {
+    const [notifications, setNotifications] = useState(false);
+    
+    const initializeNotifications = async () => {
+        const value = await SecureStore.getItemAsync(storageKey);
+        setNotifications(value === 'true');
+    };
+    
+    const handleNotificationToggle = async (value: boolean) => {
+        await SecureStore.setItemAsync(storageKey, String(value));
+        setNotifications(value);
+    };
+    
+    return {
+        notifications,
+        initializeNotifications,
+        handleNotificationToggle
+    };
+};
+```
+
+### Storage Keys
+
+- `guest_notifications` - Guest user notification preferences
+- `employee_notifications` - Employee notification preferences
+
+## Deep Linking Configuration
+
+The app is configured with a custom URL scheme:
+
+```json app.json
+{
+  "scheme": "fluxomobile"
+}
+```
+
+This allows deep links like:
+- `fluxomobile://incidents/123`
+- `fluxomobile://settings`
+
+## Font Configuration
+
+Fonts are loaded in the root layout:
+
+```typescript app/_layout.tsx
+import {
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+} from "@expo-google-fonts/poppins";
+import { useFonts } from "expo-font";
+
+export default function RootLayout() {
+  const [loaded] = useFonts({
+    DtmF: require("../assets/fonts/DebiUsarEsteFontRegular.ttf"),
+    PoppinsRegular: Poppins_400Regular,
+    PoppinsMedium: Poppins_500Medium,
+    PoppinsSemiBold: Poppins_600SemiBold,
+    PoppinsBold: Poppins_700Bold,
+  });
+
+  useEffect(() => {
+    if (loaded) SplashScreen.hideAsync();
+  }, [loaded]);
+
+  if (!loaded) return null;
+
+  return <Stack screenOptions={{ headerShown: false }} />;
+}
+```
+
+## Splash Screen Configuration
+
+Splash screen settings in `app.json`:
+
+```json
+{
+  "plugins": [
+    [
+      "expo-splash-screen",
+      {
+        "image": "./assets/images/splash-icon.png",
+        "imageWidth": 200,
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff",
+        "dark": {
+          "backgroundColor": "#000000"
+        }
+      }
+    ]
+  ]
+}
+```
+
+## Plugins Configuration
+
+Required Expo plugins:
+
+```json app.json
+{
+  "plugins": [
+    "expo-router",
+    "react-native-bottom-tabs",
+    "expo-secure-store",
+    "expo-font",
+    "@react-native-community/datetimepicker",
+    "expo-barcode-scanner",
+    [
+      "expo-build-properties",
+      {
+        "ios": {
+          "useFrameworks": "static"
+        }
+      }
+    ]
+  ]
+}
+```
+
+## Security Configuration
+
+<Steps>
+  <Step title="Secure Storage">
+    All sensitive data is stored using Expo Secure Store:
+    
+    ```typescript
+    import * as SecureStore from 'expo-secure-store';
+    
+    // Store session
+    await SecureStore.setItemAsync('guest_session', JSON.stringify(session));
+    
+    // Retrieve session
+    const session = await SecureStore.getItemAsync('guest_session');
+    ```
+  </Step>
+  
+  <Step title="Route Protection">
+    Each role has protected routes via layout guards:
+    
+    ```typescript app/(empleado)/_layout.tsx
+    export default function EmpleadoLayout() {
+        useEffect(() => {
+            const checkEmpleado = async () => {
+                const { data } = await supabase.auth.getSession();
+                if (!data.session) {
+                    router.replace('/(auth)/login');
+                    return;
+                }
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', data.session.user.id)
+                    .single();
+                if (profile?.role !== 'empleado') {
+                    router.replace('/(auth)/login');
+                }
+            };
+            checkEmpleado();
+        }, []);
+        return <Stack screenOptions={{ headerShown: false }} />;
+    }
+    ```
+  </Step>
+</Steps>
+
+## TypeScript Configuration
+
+The app uses TypeScript with strict mode:
+
+```json tsconfig.json
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Guest Features" icon="user" href="/mobile/guest-features">
+    Learn about guest user functionality
+  </Card>
+  <Card title="Employee Features" icon="briefcase" href="/mobile/employee-features">
+    Explore employee capabilities
+  </Card>
+</CardGroup>

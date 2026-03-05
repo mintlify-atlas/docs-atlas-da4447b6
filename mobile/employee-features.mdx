@@ -1,0 +1,606 @@
+---
+title: 'Employee User Features'
+description: 'Complete guide to employee functionality in the Incidents App'
+---
+
+## Overview
+
+Employee users are hotel staff members who handle incident resolution. They have authenticated access with email/password and can view, claim, and resolve incidents.
+
+<Info>
+  Employees must be created by administrators and are assigned to specific departments (areas).
+</Info>
+
+## Authentication
+
+Employees log in using email and password:
+
+```typescript app/(auth)/login.tsx
+async function handleWorkerLogin() {
+  if (!email || !password) {
+    Alert.alert("Error", "Completa todos los campos");
+    return;
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error || !data.user) {
+    Alert.alert("Error", error?.message || "Credenciales inválidas");
+    return;
+  }
+
+  // Get user profile and role
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .single();
+
+  const role = profile?.role as UserRole;
+
+  if (role === "empleado") {
+    router.replace("/(empleado)");
+  } else {
+    Alert.alert("Acceso denegado");
+    await supabase.auth.signOut();
+  }
+}
+```
+
+### Route Protection
+
+Employee routes are protected by a layout guard:
+
+```typescript app/(empleado)/_layout.tsx
+export default function EmpleadoLayout() {
+    useEffect(() => {
+        const checkEmpleado = async () => {
+            const { data } = await supabase.auth.getSession();
+            if (!data.session) {
+                router.replace('/(auth)/login');
+                return;
+            }
+            
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', data.session.user.id)
+                .single();
+                
+            if (profile?.role !== 'empleado') {
+                router.replace('/(auth)/login');
+            }
+        };
+        checkEmpleado();
+    }, []);
+    
+    return <Stack screenOptions={{ headerShown: false }} />;
+}
+```
+
+## Dashboard
+
+The employee dashboard provides two views:
+
+```typescript app/(empleado)/index.tsx
+export default function IncidenciasScreen() {
+  const [activeTab, setActiveTab] = useState<"tareas" | "buzon">("tareas");
+
+  return (
+    <SafeAreaView style={styles.mainContainer}>
+      <View style={styles.header}>
+        <AppText style={styles.headerTitle}>Panel Principal</AppText>
+        <TouchableOpacity onPress={handleSettingsPress}>
+          <UserCircle2 size={28} color="#09f" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.titleSection}>
+        <AppText style={styles.mainTitle}>Mis Incidencias</AppText>
+        <AppText style={styles.currentViewLabel}>
+          {activeTab === "tareas" ? "Tareas asignadas" : "Buzón general"}
+        </AppText>
+      </View>
+
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === "tareas" && styles.activeTab]}
+          onPress={() => setActiveTab("tareas")}
+        >
+          <AppText>Mis Tareas</AppText>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === "buzon" && styles.activeTab]}
+          onPress={() => setActiveTab("buzon")}
+        >
+          <AppText>Buzón General</AppText>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === "tareas" ? (
+        <EmpleadoMyTasks />
+      ) : (
+        <EmpleadoBuzonIncidents />
+      )}
+    </SafeAreaView>
+  );
+}
+```
+
+## My Tasks
+
+Employees can view incidents assigned specifically to them:
+
+```typescript components/EmpleadoMyTasks.tsx
+export const EmpleadoMyTasks = () => {
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadIncidents = async () => {
+    // Get authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No hay usuario autenticado");
+
+    // Get incidents assigned to this employee
+    const { data, error } = await supabase
+      .from("incidents")
+      .select("id, title, description, priority, status, created_at, areas(name)")
+      .eq("assigned_to", user.id)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    setIncidents((data || []) as unknown as Incident[]);
+    setLoading(false);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadIncidents();
+    }, [])
+  );
+
+  if (loading) {
+    return <IncidentSkeleton />;
+  }
+
+  if (incidents.length === 0) {
+    return (
+      <EmptyState
+        title="Todo está bajo control"
+        message="No tienes tareas pendientes por ahora, mantente alerta."
+      />
+    );
+  }
+
+  return (
+    <FlatList
+      data={incidents}
+      renderItem={({ item }) => <IncidentCard incident={item} />}
+      keyExtractor={(item) => item.id}
+    />
+  );
+};
+```
+
+### Task Features
+
+<CardGroup cols={2}>
+  <Card title="View Assigned" icon="clipboard-list">
+    See all incidents assigned to you
+  </Card>
+  <Card title="Update Status" icon="refresh">
+    Mark incidents as in progress or resolved
+  </Card>
+  <Card title="Priority Sorting" icon="sort">
+    Tasks sorted by priority and date
+  </Card>
+  <Card title="Real-time Updates" icon="zap">
+    Automatic refresh when focused
+  </Card>
+</CardGroup>
+
+## General Inbox
+
+Employees can browse all unassigned incidents:
+
+```typescript components/EmpleadoBuzonIncidents.tsx
+export const EmpleadoBuzonIncidents = () => {
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadIncidents = async () => {
+    // Get all unassigned incidents
+    const { data, error } = await supabase
+      .from("incidents")
+      .select("id, title, description, priority, status, created_at, areas(name)")
+      .is("assigned_to", null)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    setIncidents((data || []) as unknown as Incident[]);
+    setLoading(false);
+  };
+
+  const handleClaimIncident = async (incidentId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from("incidents")
+      .update({
+        assigned_to: user.id,
+        status: "in_progress"
+      })
+      .eq("id", incidentId);
+
+    if (error) {
+      Alert.alert("Error", "No se pudo reclamar la incidencia");
+      return;
+    }
+
+    Alert.alert("Éxito", "Incidencia asignada a ti");
+    loadIncidents(); // Refresh list
+  };
+
+  return (
+    <FlatList
+      data={incidents}
+      renderItem={({ item }) => (
+        <IncidentCard
+          incident={item}
+          showClaimButton
+          onClaim={() => handleClaimIncident(item.id)}
+        />
+      )}
+      keyExtractor={(item) => item.id}
+    />
+  );
+};
+```
+
+## Incident Details
+
+Employees can view full incident details:
+
+```typescript app/(empleado)/incidents/[id].tsx
+export default function IncidentDetailScreen() {
+  const { id } = useLocalSearchParams();
+  const [incident, setIncident] = useState<Incident | null>(null);
+
+  const loadIncident = async () => {
+    const { data, error } = await supabase
+      .from("incidents")
+      .select(`
+        *,
+        areas(name),
+        rooms(room_code),
+        profiles(full_name)
+      `)
+      .eq("id", id)
+      .single();
+
+    if (error) throw error;
+    setIncident(data);
+  };
+
+  return (
+    <ScrollView>
+      <View style={styles.header}>
+        <AppText style={styles.title}>{incident.title}</AppText>
+        <PriorityBadge priority={incident.priority} />
+      </View>
+
+      <View style={styles.section}>
+        <AppText style={styles.label}>Descripción</AppText>
+        <AppText style={styles.description}>{incident.description}</AppText>
+      </View>
+
+      <View style={styles.section}>
+        <AppText style={styles.label}>Detalles</AppText>
+        <DetailRow label="Área" value={incident.areas.name} />
+        <DetailRow label="Habitación" value={incident.rooms.room_code} />
+        <DetailRow label="Estado" value={incident.status} />
+      </View>
+
+      {incident.assigned_to && (
+        <ResolveIncidentButton
+          incidentId={incident.id}
+          onResolved={handleResolved}
+        />
+      )}
+    </ScrollView>
+  );
+}
+```
+
+## Resolving Incidents
+
+Employees can mark incidents as resolved:
+
+```typescript components/ResolveIncidentBottomSheet.tsx
+export const ResolveIncidentBottomSheet = ({ incidentId, onResolved }) => {
+  const [resolution, setResolution] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleResolve = async () => {
+    if (!resolution.trim()) {
+      Alert.alert("Error", "Describe cómo se resolvió la incidencia");
+      return;
+    }
+
+    setLoading(true);
+
+    const { error } = await supabase
+      .from("incidents")
+      .update({
+        status: "resolved",
+        resolution_notes: resolution,
+        resolved_at: new Date().toISOString()
+      })
+      .eq("id", incidentId);
+
+    setLoading(false);
+
+    if (error) {
+      Alert.alert("Error", "No se pudo resolver la incidencia");
+      return;
+    }
+
+    Alert.alert("Éxito", "Incidencia resuelta correctamente");
+    onResolved();
+  };
+
+  return (
+    <ModalSheet visible={visible} onClose={onClose}>
+      <View style={styles.container}>
+        <AppText style={styles.title}>Resolver Incidencia</AppText>
+
+        <AppText style={styles.label}>Notas de resolución</AppText>
+        <TextInput
+          style={styles.textArea}
+          value={resolution}
+          onChangeText={setResolution}
+          placeholder="Describe cómo se resolvió el problema..."
+          multiline
+        />
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleResolve}
+          disabled={loading}
+        >
+          <AppText style={styles.buttonText}>
+            {loading ? "Resolviendo..." : "Marcar como Resuelta"}
+          </AppText>
+        </TouchableOpacity>
+      </View>
+    </ModalSheet>
+  );
+};
+```
+
+## Settings
+
+Employee settings provide more options than guest settings:
+
+```typescript app/(empleado)/settings.tsx
+export default function SettingsScreen() {
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+  const [area, setArea] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+
+      if (!user) {
+        router.replace("/(auth)/login");
+        return;
+      }
+
+      setEmail(user.email ?? null);
+      setDisplayName(user.user_metadata?.display_name || null);
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("area")
+        .eq("id", user.id)
+        .single();
+
+      setArea(profile?.area || null);
+    };
+    fetchUserProfile();
+  }, []);
+
+  return (
+    <ScrollView>
+      <ProfileSection
+        displayName={displayName}
+        email={email}
+      />
+
+      <Text style={styles.sectionLabel}>Perfil</Text>
+      <View style={styles.card}>
+        <SettingItem
+          icon={UserRoundPen}
+          title="Nombre de usuario"
+          value={displayName || "Configurar"}
+          onPress={handleOpenUsernameModal}
+        />
+        <SettingItem
+          icon={LandPlot}
+          title="Área de trabajo"
+          value={area || "Sin asignar"}
+          disabled
+          hideChevron
+        />
+      </View>
+
+      <Text style={styles.sectionLabel}>Preferencias</Text>
+      <View style={styles.card}>
+        <SettingItem
+          icon={Bell}
+          title="Notificaciones y sonidos"
+          hasSwitch
+          switchValue={notifications}
+          onSwitchChange={handleNotificationToggle}
+        />
+        <SettingItem
+          icon={Palette}
+          title="Tema"
+          value={getThemeLabel()}
+          onPress={handleOpenThemeModal}
+        />
+      </View>
+
+      <Text style={styles.sectionLabel}>Seguridad</Text>
+      <View style={styles.card}>
+        <SettingItem
+          icon={LockKeyhole}
+          title="Contraseña"
+          value="Cambiar"
+          onPress={handleOpenPasswordModal}
+        />
+        <SettingItem
+          icon={LogOut}
+          title="Cerrar sesión"
+          titleColor="#FF4D4D"
+          onPress={handleLogout}
+        />
+      </View>
+    </ScrollView>
+  );
+}
+```
+
+### Available Settings
+
+<Tabs>
+  <Tab title="Profile">
+    - **Username** - Update display name
+    - **Work Area** - View assigned department (read-only)
+    - **Email** - View email (read-only)
+  </Tab>
+  
+  <Tab title="Preferences">
+    - **Notifications** - Toggle push notifications
+    - **Language** - System language settings
+    - **Theme** - Light, dark, or system theme
+  </Tab>
+  
+  <Tab title="Security">
+    - **Password** - Change account password
+    - **Logout** - Sign out of account
+  </Tab>
+</Tabs>
+
+## Updating Profile
+
+### Change Username
+
+```typescript components/settings/empleado/EditUsernameModal.tsx
+export const EditUsernameModal = ({ onUpdate }) => {
+  const [username, setUsername] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    if (!username.trim()) {
+      Alert.alert("Error", "El nombre no puede estar vacío");
+      return;
+    }
+
+    setLoading(true);
+
+    const { error } = await supabase.auth.updateUser({
+      data: { display_name: username }
+    });
+
+    setLoading(false);
+
+    if (error) {
+      Alert.alert("Error", "No se pudo actualizar el nombre");
+      return;
+    }
+
+    Alert.alert("Éxito", "Nombre actualizado correctamente");
+    onUpdate(username);
+    onClose();
+  };
+
+  return (
+    <ModalSheet visible={visible} onClose={onClose}>
+      <View style={styles.container}>
+        <AppText style={styles.title}>Cambiar Nombre</AppText>
+
+        <TextInput
+          style={styles.input}
+          value={username}
+          onChangeText={setUsername}
+          placeholder="Nuevo nombre"
+        />
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleSave}
+          disabled={loading}
+        >
+          <AppText style={styles.buttonText}>
+            {loading ? "Guardando..." : "Guardar"}
+          </AppText>
+        </TouchableOpacity>
+      </View>
+    </ModalSheet>
+  );
+};
+```
+
+### Change Password
+
+```typescript components/settings/empleado/EditPasswordModal.tsx
+export const EditPasswordModal = () => {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const handleSave = async () => {
+    if (newPassword !== confirmPassword) {
+      Alert.alert("Error", "Las contraseñas no coinciden");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert("Error", "La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    if (error) {
+      Alert.alert("Error", "No se pudo cambiar la contraseña");
+      return;
+    }
+
+    Alert.alert("Éxito", "Contraseña actualizada correctamente");
+    onClose();
+  };
+};
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Admin Features" icon="shield" href="/mobile/admin-features">
+    Explore administrator capabilities
+  </Card>
+  <Card title="Guest Features" icon="user" href="/mobile/guest-features">
+    Review guest functionality
+  </Card>
+</CardGroup>

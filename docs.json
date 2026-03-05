@@ -1,122 +1,116 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Incidents App",
+  "theme": "linden",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#7c7c7c",
+    "light": "#0a0a0a",
+    "dark": "#c9c9c9"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/de3e508f-fa95-460f-910a-e0e5ac29bb99.jpg",
+  "logo": {
+    "light": "https://media.brand.dev/e07ae119-8705-4af8-8518-497a2cc1b811.svg",
+    "dark": "https://media.brand.dev/e07ae119-8705-4af8-8518-497a2cc1b811.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/tuerre/incidents-app"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/tuerre/incidents-app"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "architecture"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Mobile App",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "mobile/overview",
+              "mobile/installation",
+              "mobile/configuration",
+              "mobile/guest-features",
+              "mobile/employee-features",
+              "mobile/admin-features"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Web Dashboard",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "web/overview",
+              "web/installation",
+              "web/configuration",
+              "web/analytics",
+              "web/incident-management",
+              "web/user-management"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Core Features",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "features/incident-tracking",
+              "features/qr-scanning",
+              "features/notifications",
+              "features/roles-permissions",
+              "features/real-time-updates"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/mobile",
+              "deployment/web",
+              "deployment/environment-variables",
+              "deployment/supabase-setup"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Database Schema",
             "pages": [
-              "api-reference/introduction"
+              "api/database-overview",
+              "api/incidents",
+              "api/users",
+              "api/rooms",
+              "api/areas",
+              "api/sessions"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Mobile Components",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/components/incident-form",
+              "api/components/incident-card",
+              "api/components/qr-scanner"
+            ]
+          },
+          {
+            "group": "Hooks & Services",
+            "pages": [
+              "api/supabase-client",
+              "api/authentication",
+              "api/notifications-service"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }
