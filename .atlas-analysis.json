@@ -1,0 +1,121 @@
+{
+  "projectType": "saas",
+  "projectName": "Incidents App",
+  "projectDescription": "A comprehensive hotel incident management system with mobile app for guests and staff, and web dashboard for administrators.",
+  "theme": "linden",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#0a0a0a",
+  "darkColor": "#c9c9c9",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Mobile App",
+            "pages": [
+              "mobile/overview",
+              "mobile/installation",
+              "mobile/configuration",
+              "mobile/guest-features",
+              "mobile/employee-features",
+              "mobile/admin-features"
+            ]
+          },
+          {
+            "group": "Web Dashboard",
+            "pages": [
+              "web/overview",
+              "web/installation",
+              "web/configuration",
+              "web/analytics",
+              "web/incident-management",
+              "web/user-management"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/incident-tracking",
+              "features/qr-scanning",
+              "features/notifications",
+              "features/roles-permissions",
+              "features/real-time-updates"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/mobile",
+              "deployment/web",
+              "deployment/environment-variables",
+              "deployment/supabase-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Database Schema",
+            "pages": [
+              "api/database-overview",
+              "api/incidents",
+              "api/users",
+              "api/rooms",
+              "api/areas",
+              "api/sessions"
+            ]
+          },
+          {
+            "group": "Mobile Components",
+            "pages": [
+              "api/components/incident-form",
+              "api/components/incident-card",
+              "api/components/qr-scanner"
+            ]
+          },
+          {
+            "group": "Hooks & Services",
+            "pages": [
+              "api/supabase-client",
+              "api/authentication",
+              "api/notifications-service"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-role incident management (Guest, Employee, Admin)",
+    "QR code scanning for room identification",
+    "Real-time incident tracking with Supabase",
+    "Cross-platform mobile app (iOS, Android)",
+    "Web dashboard with analytics and reporting",
+    "Push notifications for incident updates",
+    "Priority-based incident routing",
+    "Area and room-based incident categorization"
+  ],
+  "publicApiSurface": [
+    "CreateIncidentForm",
+    "IncidentCard",
+    "ResolveIncidentBottomSheet",
+    "EmpleadoMyTasks",
+    "supabase client",
+    "SecureStore authentication",
+    "Guest session management",
+    "Admin user management",
+    "Analytics dashboard",
+    "QR code generation and scanning"
+  ]
+}
